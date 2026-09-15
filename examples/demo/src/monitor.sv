@@ -7,6 +7,19 @@
 //
 // The package types appear in the port list below and link back to their
 // definitions in :sv:package:`counter_pkg`.
+//
+// The reST simple table below lives in this module's doc-comment header; every
+// cell in the right-hand column is a cross-reference, which checks that module,
+// package and type links resolve inside a table too:
+//
+// ================  =================================
+// Role              Reference
+// ================  =================================
+// Watched module    :sv:module:`counter`
+// Shared package    :sv:package:`counter_pkg`
+// FSM state type    :sv:type:`counter_pkg::state_t`
+// Sample record     :sv:type:`counter_pkg::sample_t`
+// ================  =================================
 module monitor #(
     parameter int WIDTH = 8  // Width of the observed count.
 ) (
