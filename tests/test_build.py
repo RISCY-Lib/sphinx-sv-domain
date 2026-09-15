@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from html import unescape
 from typing import TYPE_CHECKING
 
 import pytest
@@ -24,6 +25,14 @@ def _signatures(html: str) -> dict[str, str]:
     for match in re.finditer(r'<dt class="sig[^"]*"[^>]*id="([^"]*)"[^>]*>(.*?)</dt>', html, re.S):
         out[match.group(1)] = _text(match.group(2)).rstrip("¶").strip()
     return out
+
+
+def _group_titles(html: str) -> list[str]:
+    """Return the rendered title of every ``sv:group`` on the page, in order."""
+    return [
+        unescape(_text(m.group(1)))
+        for m in re.finditer(r'<dt class="[^"]*sv-group-title[^"]*">(.*?)</dt>', html, re.S)
+    ]
 
 
 def _sig_links(html: str, sig_id: str) -> dict[str, str]:
@@ -87,6 +96,80 @@ def test_autodoc_module_expands_ports_and_params(app: Sphinx) -> None:
     # ...and each signal's trailing comment becomes its description.
     assert "The counter clock." in _text(html)
     assert "Counter width in bits." in _text(html)
+
+
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_autodoc_groups_ports_and_params(app: Sphinx) -> None:
+    app.build()
+    html = (app.outdir / "index.html").read_text()
+    sigs = _signatures(html)
+    # Ungrouped ports still render (before any group), and grouped members keep
+    # their own signatures and ids.
+    assert sigs["port-router-clk"] == "input clk: logic"
+    assert sigs["port-router-in_data"] == "input in_data: logic [WIDTH-1:0]"
+    assert sigs["parameter-router-WIDTH"] == "parameter WIDTH: int = 32"
+    # The parameter banner and the port @group / banner become group headings...
+    assert set(_group_titles(html)) >= {"Sizing", "Ingress", "Egress"}
+    # ...inside the existing section rubrics, which are unchanged.
+    assert '<p class="rubric">Parameters</p>' in html
+    assert '<p class="rubric">Ports</p>' in html
+    # A group's continuation-comment description renders under its heading.
+    assert "The inbound payload channel." in _text(html)
+
+
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_group_stylesheet_is_bundled_and_linked(app: Sphinx) -> None:
+    app.build()
+    css = app.outdir / "_static" / "sv-domain.css"
+    assert css.exists()
+    assert "sv-group-title" in css.read_text()
+    assert "sv-domain.css" in (app.outdir / "index.html").read_text()
+
+
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_group_renders_as_nested_definition_list(app: Sphinx) -> None:
+    app.build()
+    html = (app.outdir / "index.html").read_text()
+    # Each group is a definition list wrapping its members in the definition body.
+    assert '<dl class="sv-group' in html
+    # The ungrouped port renders before the first group; a grouped port renders
+    # after its group title -> the section reads Ports > ungrouped > group > member.
+    pos_clk = html.index('id="port-router-clk"')
+    pos_group = re.search(r'<dt class="[^"]*sv-group-title[^"]*">\s*Ingress', html)
+    pos_in_data = html.index('id="port-router-in_data"')
+    assert pos_group is not None
+    assert pos_clk < pos_group.start() < pos_in_data
+
+
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_manual_group_directive(app: Sphinx) -> None:
+    app.build()
+    html = (app.outdir / "index.html").read_text()
+    sigs = _signatures(html)
+    # A hand-written sv:group renders its title and holds its nested ports, which
+    # register under the enclosing module's namespace.
+    assert {"Clock & Reset", "Pads"} <= set(_group_titles(html))
+    assert sigs["port-gpio-clk"] == "input clk: logic"
+    assert sigs["port-gpio-pins"] == "output pins: logic [7:0]"
+    assert "The single synchronous clock domain." in _text(html)
+
+
+@pytest.mark.sphinx(
+    "html",
+    testroot="sv-basic",
+    freshenv=True,
+    confoverrides={"sv_autodoc_group_banners": False},
+)
+def test_group_banners_config_disables_banner_markers(app: Sphinx) -> None:
+    app.build()
+    html = (app.outdir / "index.html").read_text()
+    titles = _group_titles(html)
+    # Banner-declared groups disappear; the @group tag and the manual sv:group
+    # directive are unaffected.
+    assert "Sizing" not in titles
+    assert "Egress" not in titles
+    assert "Ingress" in titles
+    assert {"Clock & Reset", "Pads"} <= set(titles)
 
 
 @pytest.mark.sphinx(

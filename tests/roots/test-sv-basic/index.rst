@@ -22,6 +22,27 @@ Manual directives
 
       A colour.
 
+Manual grouping
+---------------
+
+.. sv:module:: gpio #(parameter int N = 8) (input logic clk, output logic [7:0] pins)
+
+   A general-purpose IO block documented by hand.
+
+   .. sv:group:: Clock & Reset
+
+      The single synchronous clock domain.
+
+      .. sv:port:: input logic clk
+
+         Bus clock.
+
+   .. sv:group:: Pads
+
+      .. sv:port:: output logic [7:0] pins
+
+         Bidirectional pad drivers.
+
 Signature type links
 ---------------------
 
@@ -67,6 +88,8 @@ Autodoc
 -------
 
 .. sv:automodule:: counter
+
+.. sv:automodule:: router
 
 .. sv:autopackage:: counter_pkg
 

@@ -23,9 +23,13 @@
 module monitor #(
     parameter int WIDTH = 8  // Width of the observed count.
 ) (
+    //! @group Clock
     input  logic                 clk,    // Sample clock.
+    //! @group Observed
+    //! The counter signals this monitor watches.
     input  counter_pkg::state_t  state,  // Current FSM state of the counter.
     input  logic [WIDTH-1:0]     count,  // Current count value.
+    //! @group Capture
     output counter_pkg::sample_t snap    // Latest captured sample.
 );
 endmodule

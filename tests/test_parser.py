@@ -108,6 +108,146 @@ def test_double_slash_inside_string_is_not_a_comment() -> None:
     assert decl.params[0].doc == ""
 
 
+GROUPED_SOURCE = textwrap.dedent(
+    """
+    module router #(
+        // === Sizing ===
+        parameter int WIDTH = 32,
+        parameter int PORTS = 4
+    ) (
+        input logic clk,
+        input logic rst_n,
+        //! @group Ingress
+        //! The inbound channel.
+        //! Second desc line.
+        input logic [WIDTH-1:0] in_data,
+        input logic             in_valid,
+        // just a note
+        // --- Egress ---
+        output logic [WIDTH-1:0] out_data,
+        output logic             out_valid
+    );
+    endmodule
+    """
+)
+
+
+def test_group_tag_and_banner_markers() -> None:
+    (decl,) = parser.parse_source(GROUPED_SOURCE).declarations
+    # A banner groups the parameters; an @group tag and a banner group the ports.
+    assert [g.title for g in decl.param_groups] == ["Sizing"]
+    assert [(p.name, p.group) for p in decl.params] == [("WIDTH", "Sizing"), ("PORTS", "Sizing")]
+    assert [g.title for g in decl.port_groups] == ["Ingress", "Egress"]
+    assert [(p.name, p.group) for p in decl.ports] == [
+        ("clk", None),  # before the first marker -> ungrouped
+        ("rst_n", None),
+        ("in_data", "Ingress"),
+        ("in_valid", "Ingress"),
+        ("out_data", "Egress"),
+        ("out_valid", "Egress"),
+    ]
+
+
+def test_group_description_from_continuation_lines() -> None:
+    (decl,) = parser.parse_source(GROUPED_SOURCE).declarations
+    ingress = next(g for g in decl.port_groups if g.title == "Ingress")
+    assert ingress.desc == "The inbound channel.\nSecond desc line."
+    # A banner with no continuation lines carries no description.
+    egress = next(g for g in decl.port_groups if g.title == "Egress")
+    assert egress.desc == ""
+
+
+def test_group_markers_ignore_plain_and_asymmetric_comments() -> None:
+    src = textwrap.dedent(
+        """
+        module m (
+            // just a note
+            input logic a,
+            // -- half banner
+            input logic b,
+            // TODO: fix this
+            input logic c
+        );
+        endmodule
+        """
+    )
+    (decl,) = parser.parse_source(src).declarations
+    assert decl.port_groups == []
+    assert all(p.group is None for p in decl.ports)
+
+
+def test_group_banners_can_be_disabled_but_tags_survive() -> None:
+    (decl,) = parser.parse_source(GROUPED_SOURCE, group_banners=False).declarations
+    # The banner-declared groups vanish; the @group tag still applies and, being
+    # sticky, now also claims the ports that followed the ignored Egress banner.
+    assert decl.param_groups == []
+    assert all(p.group is None for p in decl.params)
+    assert [g.title for g in decl.port_groups] == ["Ingress"]
+    assert [p.name for p in decl.ports if p.group == "Ingress"] == [
+        "in_data",
+        "in_valid",
+        "out_data",
+        "out_valid",
+    ]
+
+
+def test_trailing_comment_is_not_mistaken_for_a_marker() -> None:
+    # pyslang parks a port's trailing comment in the *next* port's leading trivia;
+    # an ``@group`` written there must not be read as a marker for that next port.
+    src = textwrap.dedent(
+        """
+        module m (
+            input logic a,  // @group Bogus
+            input logic b   // --- Bogus ---
+        );
+        endmodule
+        """
+    )
+    (decl,) = parser.parse_source(src).declarations
+    assert decl.port_groups == []
+    assert all(p.group is None for p in decl.ports)
+
+
+def test_duplicate_consecutive_group_title_does_not_create_empty_group() -> None:
+    src = textwrap.dedent(
+        """
+        module m (
+            // --- Signals ---
+            input logic a,
+            input logic b,
+            // --- Signals ---
+            output logic c
+        );
+        endmodule
+        """
+    )
+    (decl,) = parser.parse_source(src).declarations
+    # The repeated banner continues the group instead of opening a second one.
+    assert [g.title for g in decl.port_groups] == ["Signals"]
+    assert [p.group for p in decl.ports] == ["Signals", "Signals", "Signals"]
+
+
+def test_same_title_after_another_group_stays_separate() -> None:
+    # A repeated title that is *not* adjacent (another group intervenes) is a
+    # genuine second section and is kept, in source order.
+    src = textwrap.dedent(
+        """
+        module m (
+            //! @group Data
+            input logic a,
+            //! @group Ctrl
+            input logic b,
+            //! @group Data
+            input logic c
+        );
+        endmodule
+        """
+    )
+    (decl,) = parser.parse_source(src).declarations
+    assert [g.title for g in decl.port_groups] == ["Data", "Ctrl", "Data"]
+    assert [p.group for p in decl.ports] == ["Data", "Ctrl", "Data"]
+
+
 def test_function_signature(decls: dict[tuple[str, str], parser.SVDecl]) -> None:
     add = decls[("function", "add")]
     assert add.return_type == "int"

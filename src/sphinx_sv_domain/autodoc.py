@@ -17,9 +17,11 @@ from docutils.parsers.rst import directives
 from sphinx.util import logging
 from sphinx.util.docutils import SphinxDirective
 
-from sphinx_sv_domain.parser import ParseResult, SVDecl, parse_file
+from sphinx_sv_domain.parser import ParseResult, SVDecl, SVGroup, parse_file
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
     from docutils.nodes import Node
     from sphinx.util.typing import OptionSpec
 
@@ -43,9 +45,9 @@ _AUTO_KINDS = (
 _SV_SUFFIXES = (".sv", ".svh")
 _INDENT = "   "
 
-# Per-process parse cache keyed by (path, mtime); pyslang parsing is pure so
-# this is safe under Sphinx's process-based parallel builds.
-_PARSE_CACHE: dict[tuple[str, float], ParseResult] = {}
+# Per-process parse cache keyed by (path, mtime, group_banners); pyslang parsing
+# is pure so this is safe under Sphinx's process-based parallel builds.
+_PARSE_CACHE: dict[tuple[str, float, bool], ParseResult] = {}
 
 
 class SVAutoObject(SphinxDirective):
@@ -67,7 +69,7 @@ class SVAutoObject(SphinxDirective):
         base_kind = self.name.split(":")[-1].removeprefix("auto")
         name = self.arguments[0].strip()
 
-        result = self._resolve(name, base_kind)
+        result = self._resolve(name, base_kind, self.config.sv_autodoc_group_banners)
         if result is None:
             return [self._warn(f"could not find SystemVerilog {base_kind} '{name}'")]
         path, decl, all_decls = result
@@ -87,9 +89,10 @@ class SVAutoObject(SphinxDirective):
         self,
         name: str,
         kind: str,
+        group_banners: bool,
     ) -> tuple[str, SVDecl, list[SVDecl]] | None:
         for path in self._candidate_files():
-            parsed = _parse_cached(path)
+            parsed = _parse_cached(path, group_banners)
             for decl in parsed.declarations:
                 if decl.kind == kind and decl.name == name:
                     return path, decl, parsed.declarations
@@ -157,12 +160,14 @@ class SVAutoObject(SphinxDirective):
 
         if decl.params:
             lines += [f"{pad}.. rubric:: Parameters", ""]
-            for param in decl.params:
-                lines += _member_lines(pad, "parameter", _param_signature(param), param.doc)
+            lines += _group_section_lines(
+                pad, "parameter", decl.params, decl.param_groups, _param_signature
+            )
         if decl.ports:
             lines += [f"{pad}.. rubric:: Ports", ""]
-            for port in decl.ports:
-                lines += _member_lines(pad, "port", _port_signature(port), port.doc)
+            lines += _group_section_lines(
+                pad, "port", decl.ports, decl.port_groups, _port_signature
+            )
         for enum in decl.enumerators:
             sig = enum.name if enum.value is None else f"{enum.name} = {enum.value}"
             lines += _member_lines(pad, "enumerator", sig, enum.doc)
@@ -184,15 +189,15 @@ class SVAutoObject(SphinxDirective):
 # ---------------------------------------------------------------------------
 # Module-level helpers
 # ---------------------------------------------------------------------------
-def _parse_cached(path: str) -> ParseResult:
+def _parse_cached(path: str, group_banners: bool) -> ParseResult:
     try:
         mtime = os.path.getmtime(path)
     except OSError:
-        return parse_file(path)
-    key = (path, mtime)
+        return parse_file(path, group_banners=group_banners)
+    key = (path, mtime, group_banners)
     cached = _PARSE_CACHE.get(key)
     if cached is None:
-        cached = parse_file(path)
+        cached = parse_file(path, group_banners=group_banners)
         _PARSE_CACHE[key] = cached
     return cached
 
@@ -212,6 +217,46 @@ def _member_lines(pad: str, kind: str, signature: str, doc: str) -> list[str]:
         body = pad + _INDENT
         lines += [body + line if line else "" for line in doc.splitlines()]
         lines.append("")
+    return lines
+
+
+def _group_section_lines(
+    pad: str,
+    kind: str,
+    members: Sequence[object],
+    groups: list[SVGroup],
+    signature: Callable[[object], str],
+) -> list[str]:
+    """Emit the members of one section, ungrouped first then per ``sv:group``.
+
+    Members carry the ``title`` of the group they belong to; because markers are
+    sticky, members of a group are contiguous, so the ordered *groups* are filled
+    by walking the member list once.
+    """
+    lines: list[str] = []
+    i, n = 0, len(members)
+
+    def _emit(at: str, member: object) -> None:
+        lines.extend(_member_lines(at, kind, signature(member), getattr(member, "doc", "")))
+
+    while i < n and getattr(members[i], "group", None) is None:
+        _emit(pad, members[i])
+        i += 1
+
+    body = pad + _INDENT
+    for group in groups:
+        lines += [f"{pad}.. sv:group:: {group.title}", ""]
+        if group.desc:
+            lines += [body + line if line else "" for line in group.desc.splitlines()]
+            lines.append("")
+        while i < n and getattr(members[i], "group", None) == group.title:
+            _emit(body, members[i])
+            i += 1
+
+    # Defensive: emit any members left unclaimed (e.g. an unregistered group).
+    while i < n:
+        _emit(pad, members[i])
+        i += 1
     return lines
 
 

@@ -11,6 +11,7 @@ from sphinx.util.nodes import make_refnode
 
 from sphinx_sv_domain.autodoc import AUTODOC_DIRECTIVES
 from sphinx_sv_domain.directives import (
+    SVGroup,
     SVNamespace,
     SVNamespacePop,
     SVNamespacePush,
@@ -107,6 +108,7 @@ class SVDomain(Domain):
         "covergroup": SVObject,
         "function": SVObject,
         "task": SVObject,
+        "group": SVGroup,
         "namespace": SVNamespace,
         "namespace-push": SVNamespacePush,
         "namespace-pop": SVNamespacePop,

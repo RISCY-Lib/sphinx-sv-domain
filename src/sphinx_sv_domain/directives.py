@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from sphinx_sv_domain.domain import SVDomain
 
 __all__ = [
+    "SVGroup",
     "SVNamespace",
     "SVNamespacePop",
     "SVNamespacePush",
@@ -473,6 +474,36 @@ class SVObject(ObjectDescription[str]):
             self.env.ref_context["sv:namespace"] = stack.pop() if stack else None
             obj_stack = self.env.ref_context.get("sv:enclosing_object_stack", [])
             self.env.ref_context["sv:enclosing_object"] = obj_stack.pop() if obj_stack else None
+
+
+# ---------------------------------------------------------------------------
+# Member grouping
+# ---------------------------------------------------------------------------
+class SVGroup(SphinxDirective):
+    """A titled group of ports or parameters inside a module/interface/program.
+
+    Renders as a single-item definition list: the argument is the term and the
+    directive content -- an optional description followed by the nested
+    ``sv:port`` / ``sv:parameter`` directives -- is the (indented) definition.
+    Nesting the members in the definition body gives a clear ``Ports > group >
+    members`` hierarchy in every theme without a heading level.  Purely
+    presentational: it registers no object and creates no cross-reference
+    target, and (unlike a section) never enters the table of contents.  Autodoc
+    emits the same directive so grouped source and hand-written docs render alike.
+    """
+
+    has_content = True
+    required_arguments = 1
+    optional_arguments = 0
+    final_argument_whitespace = True
+    option_spec: ClassVar[OptionSpec] = {}
+
+    def run(self) -> list[Node]:
+        title = self.arguments[0].strip()
+        term = nodes.term("", title, classes=["sv-group-title"])
+        definition = nodes.definition("", *self.parse_content_to_nodes())
+        item = nodes.definition_list_item("", term, definition)
+        return [nodes.definition_list("", item, classes=["sv-group"])]
 
 
 # ---------------------------------------------------------------------------

@@ -24,6 +24,7 @@ __all__ = [
     "SVArg",
     "SVDecl",
     "SVEnumerator",
+    "SVGroup",
     "SVMember",
     "SVParam",
     "SVPort",
@@ -79,6 +80,31 @@ _LEADING_KW_RE = re.compile(
 _STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"')
 _BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/")
 
+# A ``@group`` / ``@defgroup`` (or backslash ``\group``) doc tag that opens a
+# member group; everything after the tag on the line is the group title.
+_GROUP_TAG_RE = re.compile(r"^[@\\](?:group|defgroup)\b[ \t]*(?P<title>.*)$")
+# A decorative banner such as ``--- Clock & Reset ---`` or ``=== Sizing ===``: a
+# run (>=3) of the same character must fence both sides of a non-empty title.
+# The two runs must share a character but need not be the same length (so a
+# ``--- T ----`` typo still reads as a banner); one-sided or text-only comments
+# do not match.
+_GROUP_BANNER_RE = re.compile(r"^([-=#*])\1{2,}\s+(.+?)\s+([-=#*])\3{2,}$")
+
+
+@dataclass
+class SVGroup:
+    """A named group of ports or parameters within a module/interface/program.
+
+    A group is opened by a marker sitting on its own line inside the ``#(...)``
+    parameter list or the port list -- either an ``@group``/``@defgroup`` doc tag
+    or a symmetric banner comment (``--- title ---``).  The marker is *sticky*:
+    it applies to every following member until the next marker.  Comment lines
+    immediately after the marker become the group's ``desc``.
+    """
+
+    title: str
+    desc: str = ""
+
 
 @dataclass
 class SVParam:
@@ -88,6 +114,8 @@ class SVParam:
     type: str = ""
     default: str | None = None
     doc: str = ""
+    #: Title of the group this parameter belongs to, or ``None`` when ungrouped.
+    group: str | None = None
 
 
 @dataclass
@@ -98,6 +126,8 @@ class SVPort:
     direction: str = ""
     type: str = ""
     doc: str = ""
+    #: Title of the group this port belongs to, or ``None`` when ungrouped.
+    group: str | None = None
 
 
 @dataclass
@@ -144,6 +174,10 @@ class SVDecl:
     parent: str | None = None
     params: list[SVParam] = field(default_factory=list)
     ports: list[SVPort] = field(default_factory=list)
+    # Groups declared among the params / ports, in first-appearance order.  Each
+    # member above carries the ``title`` of the group it belongs to (if any).
+    param_groups: list[SVGroup] = field(default_factory=list)
+    port_groups: list[SVGroup] = field(default_factory=list)
     args: list[SVArg] = field(default_factory=list)
     members: list[SVMember] = field(default_factory=list)
     enumerators: list[SVEnumerator] = field(default_factory=list)
@@ -171,30 +205,37 @@ class _Ctx:
 
     ``trailing`` maps a 1-based source line number to the cleaned text of any
     comment that trails code on that line, so ports and parameters can adopt the
-    comment written beside them as their description.
+    comment written beside them as their description.  ``group_banners`` gates
+    recognition of symmetric banner comments as group markers (``@group`` tags
+    are always honoured).
     """
 
     sm: object
     trailing: dict[int, str] = field(default_factory=dict)
+    group_banners: bool = True
 
 
 # ---------------------------------------------------------------------------
 # Public entry points
 # ---------------------------------------------------------------------------
-def parse_source(text: str) -> ParseResult:
-    """Parse a block of SystemVerilog *text* into a :class:`ParseResult`."""
+def parse_source(text: str, *, group_banners: bool = True) -> ParseResult:
+    """Parse a block of SystemVerilog *text* into a :class:`ParseResult`.
+
+    When *group_banners* is false, symmetric banner comments are not treated as
+    port/parameter group markers (``@group`` tags still are).
+    """
     tree = SyntaxTree.fromText(text)
-    return _parse_tree(tree, text)
+    return _parse_tree(tree, text, group_banners=group_banners)
 
 
-def parse_file(path: str | Path) -> ParseResult:
+def parse_file(path: str | Path, *, group_banners: bool = True) -> ParseResult:
     """Parse the SystemVerilog file at *path* into a :class:`ParseResult`."""
     tree = SyntaxTree.fromFile(str(path))
     try:
         text = Path(path).read_text(encoding="utf-8")
     except OSError:
         text = ""
-    return _parse_tree(tree, text)
+    return _parse_tree(tree, text, group_banners=group_banners)
 
 
 def parse_signature(sig: str, objtype: str) -> SVDecl:
@@ -233,7 +274,7 @@ def parse_signature(sig: str, objtype: str) -> SVDecl:
 # ---------------------------------------------------------------------------
 # Tree walking
 # ---------------------------------------------------------------------------
-def _parse_tree(tree: SyntaxTree, text: str) -> ParseResult:
+def _parse_tree(tree: SyntaxTree, text: str, *, group_banners: bool = True) -> ParseResult:
     result = ParseResult()
     sm = tree.sourceManager
     for diag in tree.diagnostics:
@@ -243,7 +284,11 @@ def _parse_tree(tree: SyntaxTree, text: str) -> ParseResult:
             line = 0
         result.diagnostics.append((line, str(diag.code)))
 
-    ctx = _Ctx(sm=sm, trailing=_trailing_comments_by_line(text))
+    ctx = _Ctx(
+        sm=sm,
+        trailing=_trailing_comments_by_line(text),
+        group_banners=group_banners,
+    )
     root = tree.root
     for node in _top_level_nodes(root):
         _walk(node, None, ctx, result.declarations)
@@ -315,9 +360,19 @@ def _fill_header(node: object, decl: SVDecl, ctx: _Ctx) -> None:
 
     parameters = getattr(header, "parameters", None)
     if parameters is not None:
+        current: SVGroup | None = None
+        registered = False
         for pdecl in _iter_nodes(getattr(parameters, "declarations", [])):
+            marker = _leading_group(pdecl, ctx.group_banners)
+            # A marker repeating the current group's title just continues it (a
+            # duplicate consecutive banner), so it never spawns an empty group.
+            if marker is not None and (current is None or marker.title != current.title):
+                current, registered = marker, False
             ptype = _str(getattr(pdecl, "type", None))
             for declarator in _iter_nodes(getattr(pdecl, "declarators", [])):
+                if current is not None and not registered:
+                    decl.param_groups.append(current)
+                    registered = True
                 default = None
                 init = getattr(declarator, "initializer", None)
                 if init is not None:
@@ -328,15 +383,24 @@ def _fill_header(node: object, decl: SVDecl, ctx: _Ctx) -> None:
                         type=ptype,
                         default=default,
                         doc=_trailing_doc(declarator, ctx),
+                        group=current.title if current else None,
                     )
                 )
 
     ports = getattr(header, "ports", None)
     if ports is not None:
+        current = None
+        registered = False
         for port in _iter_nodes(getattr(ports, "ports", [])):
+            marker = _leading_group(port, ctx.group_banners)
+            if marker is not None and (current is None or marker.title != current.title):
+                current, registered = marker, False
             declarator = getattr(port, "declarator", None)
             if declarator is None:
                 continue
+            if current is not None and not registered:
+                decl.port_groups.append(current)
+                registered = True
             phdr = getattr(port, "header", None)
             # ``direction`` (and a bare ``netType`` such as ``wire``) are read from
             # the token's clean value text: str() would include leading trivia, which
@@ -350,6 +414,7 @@ def _fill_header(node: object, decl: SVDecl, ctx: _Ctx) -> None:
                     direction=_token_text(getattr(phdr, "direction", None)),
                     type=ptype,
                     doc=_trailing_doc(declarator, ctx),
+                    group=current.title if current else None,
                 )
             )
 
@@ -562,6 +627,69 @@ def _clean_comment(text: str) -> str:
             cleaned.pop()
         return "\n".join(cleaned)
     return text
+
+
+def _parse_group_title(body: str, allow_banner: bool) -> str | None:
+    """Return the group title in a cleaned comment *body*, or ``None``.
+
+    ``@group``/``@defgroup`` (and backslash ``\\group``) tags are always
+    honoured; a symmetric ``--- title ---`` banner only when *allow_banner*.
+    """
+    body = body.strip()
+    tag = _GROUP_TAG_RE.match(body)
+    if tag:
+        return tag.group("title").strip() or None
+    if allow_banner:
+        banner = _GROUP_BANNER_RE.match(body)
+        if banner and banner.group(1) == banner.group(3):
+            return banner.group(2).strip() or None
+    return None
+
+
+def _leading_group(node: object, allow_banner: bool) -> SVGroup | None:
+    """Return a group opened in *node*'s leading trivia, or ``None``.
+
+    Scans the comment trivia parked before the member's first token for the last
+    group marker.  A marker (and any group description) must stand on its own
+    line: the previous member's *trailing* comment is also parked here by pyslang
+    but arrives before any newline in the run, so it is skipped -- otherwise an
+    ``input a,  // @group X`` trailing comment would be read as a marker for the
+    next port.  Contiguous comment lines following the marker, up to a blank
+    line, become the group description.
+    """
+    try:
+        token = node.getFirstToken()  # type: ignore[attr-defined]
+    except Exception:
+        return None
+
+    group: SVGroup | None = None
+    desc: list[str] = []
+    collecting = False
+    newline_run = 0
+    for triv in list(getattr(token, "trivia", []) or []):
+        kind = str(getattr(triv, "kind", ""))
+        if "LineComment" in kind or "BlockComment" in kind:
+            if newline_run == 0:
+                # No newline yet in this run: the comment trails code on the
+                # previous line and is never a standalone marker or description.
+                continue
+            body = _clean_comment(_raw_text(triv))
+            title = _parse_group_title(body, allow_banner)
+            if title is not None:
+                group, desc, collecting = SVGroup(title=title), [], True
+            elif collecting and newline_run < 2:
+                desc.append(body)
+            newline_run = 0
+        elif "EndOfLine" in kind:
+            newline_run += 1
+            if newline_run >= 2:
+                collecting = False
+        elif "Whitespace" not in kind:
+            collecting = False
+
+    if group is not None:
+        group.desc = "\n".join(desc).strip()
+    return group
 
 
 def _trailing_comments_by_line(text: str) -> dict[int, str]:

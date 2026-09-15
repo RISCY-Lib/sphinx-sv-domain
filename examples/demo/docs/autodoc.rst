@@ -10,6 +10,12 @@ Design modules
 
 .. sv:automodule:: counter
 
+The ``fifo`` divides its port list with ``--- banner ---`` comments and its
+parameters with a banner too; each becomes a sub-heading under *Ports* /
+*Parameters*.  The ``monitor`` below uses ``//! @group`` tags for the same
+effect.  Set ``sv_autodoc_group_banners = False`` in ``conf.py`` to ignore
+banners (``@group`` tags always apply).
+
 .. sv:automodule:: fifo
 
 The ``monitor`` reuses types from ``counter_pkg`` in its port list.  Because

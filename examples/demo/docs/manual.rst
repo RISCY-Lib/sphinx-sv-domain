@@ -37,6 +37,40 @@ like it would in prose:
 
    Forwards a captured :sv:type:`counter_pkg::sample_t` downstream.
 
+Grouping ports and parameters
+-----------------------------
+
+Long port lists read better in named groups.  Wrap the relevant ``sv:port`` or
+``sv:parameter`` directives in a ``sv:group`` block; the group title becomes a
+heading and the text before the members becomes its description.
+
+.. sv:module:: gpio #(parameter int N = 8) (input logic clk, input logic rst_n, output logic [7:0] pins)
+
+   A general-purpose IO block.
+
+   .. sv:group:: Clock & Reset
+
+      The single synchronous clock domain.
+
+      .. sv:port:: input logic clk
+
+         Bus clock.
+
+      .. sv:port:: input logic rst_n
+
+         Active-low reset.
+
+   .. sv:group:: Pads
+
+      .. sv:port:: output logic [7:0] pins
+
+         Bidirectional pad drivers.
+
+Autodoc does the same automatically: mark up the source with ``@group`` tags or
+``--- banner ---`` comments and the generated *Ports* / *Parameters* sections
+grow the matching sub-headings (see :sv:module:`fifo` and :sv:module:`monitor`
+on the autodoc page).
+
 Namespaces group related objects and give cross-references a prefix.
 
 .. sv:namespace:: soc
