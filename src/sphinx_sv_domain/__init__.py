@@ -29,6 +29,9 @@ def setup(app: Sphinx) -> ExtensionMetadata:
     from sphinx_sv_domain.domain import SVDomain
 
     app.add_config_value("sv_autodoc_source_path", None, "env", types=(str, list))
+    # When true, nested members repeat their enclosing scope in the displayed
+    # signature (e.g. ``fifo::clk``); off by default so members read as ``clk``.
+    app.add_config_value("sv_qualify_nested_names", False, "env", types=(bool,))
     app.add_domain(SVDomain)
 
     return {

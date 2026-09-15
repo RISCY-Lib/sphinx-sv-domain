@@ -155,16 +155,17 @@ class SVAutoObject(SphinxDirective):
         pad = _INDENT * indent
         lines: list[str] = []
 
-        for param in decl.params:
-            lines.append(f"{pad}.. sv:parameter:: {_param_signature(param)}")
-            lines.append("")
-        for port in decl.ports:
-            lines.append(f"{pad}.. sv:port:: {_port_signature(port)}")
-            lines.append("")
+        if decl.params:
+            lines += [f"{pad}.. rubric:: Parameters", ""]
+            for param in decl.params:
+                lines += _member_lines(pad, "parameter", _param_signature(param), param.doc)
+        if decl.ports:
+            lines += [f"{pad}.. rubric:: Ports", ""]
+            for port in decl.ports:
+                lines += _member_lines(pad, "port", _port_signature(port), port.doc)
         for enum in decl.enumerators:
             sig = enum.name if enum.value is None else f"{enum.name} = {enum.value}"
-            lines.append(f"{pad}.. sv:enumerator:: {sig}")
-            lines.append("")
+            lines += _member_lines(pad, "enumerator", sig, enum.doc)
         if decl.members:
             for member in decl.members:
                 lines.append(f"{pad}* ``{member.type} {member.name}``")
@@ -202,6 +203,16 @@ def _group_by_parent(decls: list[SVDecl]) -> dict[str, list[SVDecl]]:
         if decl.parent:
             grouped.setdefault(decl.parent, []).append(decl)
     return grouped
+
+
+def _member_lines(pad: str, kind: str, signature: str, doc: str) -> list[str]:
+    """Emit an ``sv:<kind>`` directive for a member, with its doc as content."""
+    lines = [f"{pad}.. sv:{kind}:: {signature}", ""]
+    if doc:
+        body = pad + _INDENT
+        lines += [body + line if line else "" for line in doc.splitlines()]
+        lines.append("")
+    return lines
 
 
 def _signature_for(decl: SVDecl) -> str:

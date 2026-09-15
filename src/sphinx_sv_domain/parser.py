@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pyslang.parsing import Token
@@ -17,7 +18,6 @@ from pyslang.syntax import SyntaxKind, SyntaxTree
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
-    from pathlib import Path
 
 __all__ = [
     "ParseResult",
@@ -74,6 +74,10 @@ _LEADING_KW_RE = re.compile(
     r"^\s*(?:module|interface|program|package|class|function|task|typedef|"
     r"struct|union|enum|covergroup)\b"
 )
+# A double-quoted string literal (with escapes), used to blank out strings before
+# hunting for trailing ``//`` comments so a ``//`` inside a string is ignored.
+_STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"')
+_BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/")
 
 
 @dataclass
@@ -83,6 +87,7 @@ class SVParam:
     name: str
     type: str = ""
     default: str | None = None
+    doc: str = ""
 
 
 @dataclass
@@ -92,6 +97,7 @@ class SVPort:
     name: str
     direction: str = ""
     type: str = ""
+    doc: str = ""
 
 
 @dataclass
@@ -159,19 +165,36 @@ class ParseResult:
     diagnostics: list[tuple[int, str]] = field(default_factory=list)
 
 
+@dataclass
+class _Ctx:
+    """Shared parsing context threaded through the tree walk.
+
+    ``trailing`` maps a 1-based source line number to the cleaned text of any
+    comment that trails code on that line, so ports and parameters can adopt the
+    comment written beside them as their description.
+    """
+
+    sm: object
+    trailing: dict[int, str] = field(default_factory=dict)
+
+
 # ---------------------------------------------------------------------------
 # Public entry points
 # ---------------------------------------------------------------------------
 def parse_source(text: str) -> ParseResult:
     """Parse a block of SystemVerilog *text* into a :class:`ParseResult`."""
     tree = SyntaxTree.fromText(text)
-    return _parse_tree(tree)
+    return _parse_tree(tree, text)
 
 
 def parse_file(path: str | Path) -> ParseResult:
     """Parse the SystemVerilog file at *path* into a :class:`ParseResult`."""
     tree = SyntaxTree.fromFile(str(path))
-    return _parse_tree(tree)
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        text = ""
+    return _parse_tree(tree, text)
 
 
 def parse_signature(sig: str, objtype: str) -> SVDecl:
@@ -210,7 +233,7 @@ def parse_signature(sig: str, objtype: str) -> SVDecl:
 # ---------------------------------------------------------------------------
 # Tree walking
 # ---------------------------------------------------------------------------
-def _parse_tree(tree: SyntaxTree) -> ParseResult:
+def _parse_tree(tree: SyntaxTree, text: str) -> ParseResult:
     result = ParseResult()
     sm = tree.sourceManager
     for diag in tree.diagnostics:
@@ -220,9 +243,10 @@ def _parse_tree(tree: SyntaxTree) -> ParseResult:
             line = 0
         result.diagnostics.append((line, str(diag.code)))
 
+    ctx = _Ctx(sm=sm, trailing=_trailing_comments_by_line(text))
     root = tree.root
     for node in _top_level_nodes(root):
-        _walk(node, None, sm, result.declarations)
+        _walk(node, None, ctx, result.declarations)
     return result
 
 
@@ -238,23 +262,23 @@ def _top_level_nodes(root: object) -> Iterator[object]:
         yield root
 
 
-def _walk(node: object, parent: str | None, sm: object, out: list[SVDecl]) -> None:
+def _walk(node: object, parent: str | None, ctx: _Ctx, out: list[SVDecl]) -> None:
     kind = getattr(node, "kind", None)
     objtype = _KIND_BY_SYNTAX.get(kind)
     if objtype is None:
         return
 
-    decl = _build_decl(node, objtype, parent, sm)
+    decl = _build_decl(node, objtype, parent, ctx)
     out.append(decl)
 
     member_attr = _MEMBER_ATTR.get(objtype)
     if member_attr:
         for child in _iter_nodes(getattr(node, member_attr, []) or []):
-            _walk(child, decl.name, sm, out)
+            _walk(child, decl.name, ctx, out)
 
 
-def _build_decl(node: object, objtype: str, parent: str | None, sm: object) -> SVDecl:
-    line, column = _location(node, sm)
+def _build_decl(node: object, objtype: str, parent: str | None, ctx: _Ctx) -> SVDecl:
+    line, column = _location(node, ctx.sm)
     decl = SVDecl(
         kind=objtype,
         name="",
@@ -265,7 +289,7 @@ def _build_decl(node: object, objtype: str, parent: str | None, sm: object) -> S
     )
 
     if objtype in ("module", "interface", "program", "package"):
-        _fill_header(node, decl)
+        _fill_header(node, decl, ctx)
     elif objtype == "class":
         _fill_class(node, decl)
     elif objtype in ("function", "task"):
@@ -283,7 +307,7 @@ def _build_decl(node: object, objtype: str, parent: str | None, sm: object) -> S
 # ---------------------------------------------------------------------------
 # Per-construct extraction
 # ---------------------------------------------------------------------------
-def _fill_header(node: object, decl: SVDecl) -> None:
+def _fill_header(node: object, decl: SVDecl, ctx: _Ctx) -> None:
     header = getattr(node, "header", None)
     if header is None:
         return
@@ -303,6 +327,7 @@ def _fill_header(node: object, decl: SVDecl) -> None:
                         name=_token_text(getattr(declarator, "name", None)),
                         type=ptype,
                         default=default,
+                        doc=_trailing_doc(declarator, ctx),
                     )
                 )
 
@@ -313,11 +338,18 @@ def _fill_header(node: object, decl: SVDecl) -> None:
             if declarator is None:
                 continue
             phdr = getattr(port, "header", None)
+            # ``direction`` (and a bare ``netType`` such as ``wire``) are read from
+            # the token's clean value text: str() would include leading trivia, which
+            # is where pyslang parks the *previous* line's trailing comment.
+            ptype = _str(getattr(phdr, "dataType", None)) or _token_text(
+                getattr(phdr, "netType", None)
+            )
             decl.ports.append(
                 SVPort(
                     name=_token_text(getattr(declarator, "name", None)),
-                    direction=_str(getattr(phdr, "direction", None)),
-                    type=_str(getattr(phdr, "dataType", None)) or _str(phdr),
+                    direction=_token_text(getattr(phdr, "direction", None)),
+                    type=ptype,
+                    doc=_trailing_doc(declarator, ctx),
                 )
             )
 
@@ -344,7 +376,7 @@ def _fill_subroutine(node: object, decl: SVDecl) -> None:
             decl.args.append(
                 SVArg(
                     name=_token_text(getattr(fdecl, "name", None)),
-                    direction=_str(getattr(fport, "direction", None)),
+                    direction=_token_text(getattr(fport, "direction", None)),
                     type=_str(getattr(fport, "dataType", None)),
                 )
             )
@@ -530,3 +562,50 @@ def _clean_comment(text: str) -> str:
             cleaned.pop()
         return "\n".join(cleaned)
     return text
+
+
+def _trailing_comments_by_line(text: str) -> dict[int, str]:
+    """Map each 1-based line number to the comment trailing code on that line.
+
+    A comment counts as *trailing* only when non-whitespace code precedes it, so
+    stand-alone doc-comment lines are ignored.  String literals are blanked
+    (preserving column positions) so a ``//`` inside a string default value is not
+    mistaken for a comment.
+    """
+    out: dict[int, str] = {}
+    for lineno, raw in enumerate(text.splitlines(), start=1):
+        code = _STRING_RE.sub(lambda m: " " * (m.end() - m.start()), raw)
+        line_pos = code.find("//")
+        if line_pos != -1:
+            # A ``//`` comment always runs to end of line, so it is the trailing
+            # one even if an inline ``/* */`` (e.g. a width annotation) precedes it.
+            start, end = line_pos, len(raw)
+        else:
+            # Otherwise accept a block comment only when it genuinely trails the
+            # code; an embedded ``/* */`` with code after it is part of the type.
+            block = None
+            for match in _BLOCK_COMMENT_RE.finditer(code):
+                block = match
+            if block is None or code[block.end() :].strip():
+                continue
+            start, end = block.start(), block.end()
+        if not code[:start].strip():
+            continue  # nothing but the comment on this line
+        comment = _clean_comment(raw[start:end])
+        if comment:
+            out[lineno] = comment
+    return out
+
+
+def _trailing_doc(node: object, ctx: _Ctx) -> str:
+    """Return the trailing comment on the source line where *node* begins."""
+    if not ctx.trailing:
+        return ""
+    rng = getattr(node, "sourceRange", None)
+    if rng is None:
+        return ""
+    try:
+        line = ctx.sm.getLineNumber(rng.start)  # type: ignore[attr-defined]
+    except Exception:
+        return ""
+    return ctx.trailing.get(line, "")

@@ -59,6 +59,55 @@ def test_module_ports_and_params(decls: dict[tuple[str, str], parser.SVDecl]) ->
     assert counter.ports[1].type == "logic [WIDTH-1:0]"
 
 
+def test_trailing_comments_become_member_docs() -> None:
+    src = textwrap.dedent(
+        """
+        module m #(
+            parameter int WIDTH = 8,  // Data width in bits.
+            parameter int DEPTH = 16  // Number of entries.
+        ) (
+            input  logic             clk,   // The clock.
+            output logic [WIDTH-1:0] data   // Output data bus.
+        );
+        endmodule
+        """
+    )
+    (decl,) = parser.parse_source(src).declarations
+    assert [(p.name, p.doc) for p in decl.params] == [
+        ("WIDTH", "Data width in bits."),
+        ("DEPTH", "Number of entries."),
+    ]
+    # A port's direction stays clean even though the previous line's trailing
+    # comment is parked in its leading trivia by pyslang.
+    assert [(p.name, p.direction, p.doc) for p in decl.ports] == [
+        ("clk", "input", "The clock."),
+        ("data", "output", "Output data bus."),
+    ]
+    assert decl.ports[1].type == "logic [WIDTH-1:0]"
+
+
+def test_inline_block_comment_does_not_shadow_trailing_line_comment() -> None:
+    # A ``//`` doc comment must win over an inline ``/* */`` width annotation.
+    src = "module m (\n  output logic [/*MSB*/7:0] data  // Output data bus.\n); endmodule"
+    (decl,) = parser.parse_source(src).declarations
+    assert decl.ports[0].doc == "Output data bus."
+
+
+def test_net_type_port_surfaces_net_kind() -> None:
+    (decl,) = parser.parse_source("module m (inout wire w, input clk); endmodule").declarations
+    types = {p.name: p.type for p in decl.ports}
+    assert types["w"] == "wire"
+    assert types["clk"] == ""  # no data type and no net type -> empty
+
+
+def test_double_slash_inside_string_is_not_a_comment() -> None:
+    src = 'module m #(parameter string URL = "http://example.com") (); endmodule'
+    (decl,) = parser.parse_source(src).declarations
+    assert decl.params[0].name == "URL"
+    # The ``//`` lives inside a string literal, so it is not a trailing comment.
+    assert decl.params[0].doc == ""
+
+
 def test_function_signature(decls: dict[tuple[str, str], parser.SVDecl]) -> None:
     add = decls[("function", "add")]
     assert add.return_type == "int"

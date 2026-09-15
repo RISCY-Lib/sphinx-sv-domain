@@ -53,7 +53,8 @@ def test_manual_signature_rendering(app: Sphinx) -> None:
     assert (
         sigs["module-fifo"] == "module fifo #(int DEPTH = 16)(input logic clk, output logic full)"
     )
-    assert sigs["function-my_pkg-clog2"].startswith("function my_pkg::clog2(int value)")
+    # A member nested in a package drops the redundant enclosing-scope prefix.
+    assert sigs["function-my_pkg-clog2"].startswith("function clog2(int value)")
     assert "int" in sigs["function-my_pkg-clog2"]
 
 
@@ -63,9 +64,29 @@ def test_autodoc_module_expands_ports_and_params(app: Sphinx) -> None:
     html = (app.outdir / "index.html").read_text()
     sigs = _signatures(html)
     assert sigs["module-counter"] == "module counter"
+    # Members show their direction and drop the redundant ``counter::`` prefix.
+    assert sigs["parameter-counter-WIDTH"] == "parameter WIDTH: int = 8"
+    assert sigs["port-counter-clk"] == "input clk: logic"
+    assert sigs["port-counter-count"] == "output count: logic [WIDTH-1:0]"
+    # Parameters and ports are grouped under rubric headings...
+    assert '<p class="rubric">Parameters</p>' in html
+    assert '<p class="rubric">Ports</p>' in html
+    # ...and each signal's trailing comment becomes its description.
+    assert "The counter clock." in _text(html)
+    assert "Counter width in bits." in _text(html)
+
+
+@pytest.mark.sphinx(
+    "html",
+    testroot="sv-basic",
+    freshenv=True,
+    confoverrides={"sv_qualify_nested_names": True},
+)
+def test_qualify_nested_names_restores_scope_prefix(app: Sphinx) -> None:
+    app.build()
+    sigs = _signatures((app.outdir / "index.html").read_text())
     assert sigs["parameter-counter-WIDTH"] == "parameter counter::WIDTH: int = 8"
-    assert sigs["port-counter-clk"] == "counter::clk: logic"
-    assert sigs["port-counter-count"] == "counter::count: logic [WIDTH-1:0]"
+    assert sigs["port-counter-clk"] == "input counter::clk: logic"
 
 
 @pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
@@ -73,8 +94,8 @@ def test_autodoc_package_recurses_into_members(app: Sphinx) -> None:
     app.build()
     sigs = _signatures((app.outdir / "index.html").read_text())
     assert "package-counter_pkg" in sigs
-    assert sigs["enumerator-counter_pkg-IDLE"] == "counter_pkg::IDLE"
-    assert sigs["function-counter_pkg-sat_add"].startswith("function counter_pkg::sat_add")
+    assert sigs["enumerator-counter_pkg-IDLE"] == "IDLE"
+    assert sigs["function-counter_pkg-sat_add"].startswith("function sat_add")
 
 
 @pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)

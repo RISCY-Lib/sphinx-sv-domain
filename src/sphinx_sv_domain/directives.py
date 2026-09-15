@@ -88,17 +88,33 @@ class SVObject(ObjectDescription[str]):
         keyword = _KEYWORDS.get(self.objtype, "")
         if self.objtype == "parameter" and "localparam" in self.options:
             keyword = "localparam"
+        elif self.objtype == "port" and decl.direction:
+            keyword = decl.direction
         if keyword:
             signode += addnodes.desc_sig_keyword(keyword, keyword)
             signode += addnodes.desc_sig_space()
 
-        if namespace:
-            prefix = namespace + "::"
+        if self._show_scope_prefix(namespace):
+            prefix = namespace + "::"  # type: ignore[operator]
             signode += addnodes.desc_addname(prefix, prefix)
         signode += addnodes.desc_name(decl.name, decl.name)
 
         self._render_details(signode, decl)
         return fullname
+
+    def _show_scope_prefix(self, namespace: str | None) -> bool:
+        """Whether to display the *namespace* prefix on this object's signature.
+
+        A namespace introduced by an ``sv:namespace`` directive is always shown,
+        but the prefix that merely repeats the enclosing documented object (e.g. a
+        module's name on each of its ports) is redundant and suppressed unless the
+        ``sv_qualify_nested_names`` config opts back into it.
+        """
+        if not namespace:
+            return False
+        if self.config.sv_qualify_nested_names:
+            return True
+        return namespace != self.env.ref_context.get("sv:enclosing_object")
 
     # -- per-type rendering -------------------------------------------------
     def _render_details(self, signode: desc_signature, decl: SVDecl) -> None:
@@ -188,11 +204,18 @@ class SVObject(ObjectDescription[str]):
             stack = self.env.ref_context.setdefault("sv:namespace_stack", [])
             stack.append(self.env.ref_context.get("sv:namespace"))
             self.env.ref_context["sv:namespace"] = self.names[-1]
+            # Remember the object opening this scope so its members can drop the
+            # redundant ``<object>::`` prefix from their own signatures.
+            obj_stack = self.env.ref_context.setdefault("sv:enclosing_object_stack", [])
+            obj_stack.append(self.env.ref_context.get("sv:enclosing_object"))
+            self.env.ref_context["sv:enclosing_object"] = self.names[-1]
 
     def after_content(self) -> None:
         if self.objtype in SCOPE_TYPES:
             stack = self.env.ref_context.get("sv:namespace_stack", [])
             self.env.ref_context["sv:namespace"] = stack.pop() if stack else None
+            obj_stack = self.env.ref_context.get("sv:enclosing_object_stack", [])
+            self.env.ref_context["sv:enclosing_object"] = obj_stack.pop() if obj_stack else None
 
 
 # ---------------------------------------------------------------------------
@@ -213,6 +236,9 @@ class SVNamespace(SphinxDirective):
         arg = self.arguments[0].strip() if self.arguments else ""
         self.env.ref_context["sv:namespace_stack"] = []
         self.env.ref_context["sv:namespace"] = None if arg in _ROOT_TOKENS else arg
+        # An absolute namespace is not an enclosing object, so its prefix stays.
+        self.env.ref_context["sv:enclosing_object_stack"] = []
+        self.env.ref_context["sv:enclosing_object"] = None
         return []
 
 
