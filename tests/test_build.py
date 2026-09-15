@@ -26,6 +26,19 @@ def _signatures(html: str) -> dict[str, str]:
     return out
 
 
+def _sig_links(html: str, sig_id: str) -> dict[str, str]:
+    """Map link text to href for the internal references inside one signature."""
+    match = re.search(rf'<dt class="sig[^"]*"[^>]*id="{sig_id}"[^>]*>(.*?)</dt>', html, re.S)
+    if match is None:
+        return {}
+    return {
+        _text(m.group(2)): m.group(1)
+        for m in re.finditer(
+            r'<a class="reference internal" href="([^"]*)"[^>]*>(.*?)</a>', match.group(1), re.S
+        )
+    }
+
+
 @pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
 def test_build_succeeds_without_warnings(app: Sphinx, warning: StringIO) -> None:
     app.build()
@@ -121,6 +134,26 @@ def test_cross_references_resolve(app: Sphinx) -> None:
     assert hrefs.get("alu") == "#module-chip_top-alu"
     # The generic :any: role dispatches through resolve_any_xref.
     assert "fifo" in hrefs
+
+
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_signature_type_links(app: Sphinx) -> None:
+    app.build()
+    html = (app.outdir / "index.html").read_text()
+    # A user-defined type in a module header auto-links to its definition, while
+    # built-in types (``logic``) and port names stay plain text.
+    assert _sig_links(html, "module-sampler") == {
+        "my_pkg::color_t": "#typedef-my_pkg-color_t",
+    }
+    # An explicit :sv:type: role written inside the signature links the same way.
+    assert _sig_links(html, "module-bridge") == {
+        "my_pkg::color_t": "#typedef-my_pkg-color_t",
+    }
+    # The linked type does not change the visible signature text.
+    sigs = _signatures(html)
+    assert sigs["module-sampler"] == (
+        "module sampler #(int N = 4)(input my_pkg::color_t tint, output logic done)"
+    )
 
 
 @pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)

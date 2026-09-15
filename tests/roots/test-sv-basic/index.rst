@@ -22,6 +22,17 @@ Manual directives
 
       A colour.
 
+Signature type links
+---------------------
+
+.. sv:module:: sampler #(parameter int N = 4) (input my_pkg::color_t tint, output logic done)
+
+   A module whose header port type links to its typedef.
+
+.. sv:module:: bridge (input :sv:type:`my_pkg::color_t` din, output logic valid)
+
+   An explicit cross-reference role written inside the signature.
+
 Namespaces
 ----------
 

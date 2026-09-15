@@ -29,3 +29,9 @@ Open `examples/demo/docs/_build/html/index.html` in a browser.
   `../src`.
 - `docs/autodoc.rst` — `sv:auto*` directives that document `src/` from source.
 - `docs/manual.rst` — hand-written `sv:*` directives and namespaces.
+- Type cross-links — a user-defined type used in a signature links to its
+  definition. See `src/monitor.sv` (its `counter_pkg` port types link straight
+  from the generated *Ports* table) and the "Linking types from a signature"
+  section of `docs/manual.rst`, which shows both automatic linking and explicit
+  `` :sv:type:`...` `` roles written inside the header. Doc-comments can also
+  reference other objects in prose, as `src/monitor.sv` does.

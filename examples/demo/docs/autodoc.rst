@@ -12,6 +12,12 @@ Design modules
 
 .. sv:automodule:: fifo
 
+The ``monitor`` reuses types from ``counter_pkg`` in its port list.  Because
+those types are documented (below), the ``state`` and ``snap`` port types in the
+generated *Ports* table are clickable and jump straight to their definitions.
+
+.. sv:automodule:: monitor
+
 Interfaces
 ----------
 
