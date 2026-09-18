@@ -43,7 +43,15 @@ Verification classes
 .. sv:autopackage:: counter_txn_pkg
 
 You can also document a single class on its own and point the directive at a
-specific file with the ``:file:`` option:
+specific file with the ``:file:`` option.  Functions and tasks defined in the
+class are rendered automatically:
 
 .. sv:autoclass:: base_txn
    :file: ../src/counter_txn.sv
+
+Use ``:no-functions:`` to suppress them:
+
+.. sv:autoclass:: base_txn
+   :file: ../src/counter_txn.sv
+   :no-index:
+   :no-functions:

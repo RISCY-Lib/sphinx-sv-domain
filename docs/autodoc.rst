@@ -57,6 +57,12 @@ The directives
 
       Document only the declaration itself, skipping its members.
 
+   .. rst:directive:option:: no-functions
+      :type: flag
+
+      Render a class without documenting the functions and tasks it contains.
+      Properties, parameters, and nested types are still included.
+
    .. rst:directive:option:: no-index
       :type: flag
 
