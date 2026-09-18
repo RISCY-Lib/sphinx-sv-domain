@@ -14,7 +14,7 @@ from importlib.metadata import PackageNotFoundError, version
 # -- Project information -----------------------------------------------------
 project = "sphinx-sv-domain"
 author = "RISCY-Lib Contributors"
-copyright = "RISCY-Lib Contributors"  # noqa: A001
+copyright = "RISCY-Lib Contributors"
 
 try:
     release = version("sphinx-sv-domain")

@@ -1,3 +1,19 @@
+# sphinx-sv-domain: A SystemVerilog language domain for the Sphinx documentation tooling.
+# Copyright (C) 2026 RISCY-Lib Contributors
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; If not, see <https://www.gnu.org/licenses/>.
+
 """Autodoc-style directives that document SystemVerilog straight from source.
 
 Each ``sv:auto*`` directive parses a ``.sv``/``.svh`` file with pyslang, finds
@@ -63,6 +79,7 @@ class SVAutoObject(SphinxDirective):
         "no-index-entry": directives.flag,
         "members": directives.flag,
         "no-members": directives.flag,
+        "no-functions": directives.flag,
     }
 
     def run(self) -> list[Node]:
@@ -176,8 +193,10 @@ class SVAutoObject(SphinxDirective):
                 lines.append(f"{pad}* ``{member.type} {member.name}``")
             lines.append("")
 
+        skip_kinds = {"function", "task"} if "no-functions" in self.options else set()
         for child in by_parent.get(decl.name, []):
-            lines.extend(self._render(child, by_parent, indent))
+            if child.kind not in skip_kinds:
+                lines.extend(self._render(child, by_parent, indent))
         return lines
 
     # -- helpers ------------------------------------------------------------

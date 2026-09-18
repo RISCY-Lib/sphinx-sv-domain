@@ -1,3 +1,21 @@
+#####################################################################################
+# sphinx-sv-domain: A SystemVerilog language domain for the Sphinx documentation tooling.
+# Copyright (C) 2026 RISCY-Lib Contributors
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; either
+# version 2.1 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Lesser General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; If not, see <https://www.gnu.org/licenses/>.
+#####################################################################################
+
 [project]
 name = "sphinx-sv-domain"
 version = "0.1.0"
@@ -10,7 +28,7 @@ keywords = ["sphinx", "systemverilog", "verilog", "hdl", "documentation", "domai
 classifiers = [
     "Framework :: Sphinx :: Domain",
     "Framework :: Sphinx :: Extension",
-    "License :: OSI Approved :: BSD License",
+    "License :: OSI Approved :: GNU Lesser General Public License v2 or later (LGPLv2+)",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -33,6 +51,8 @@ dev = [
     "pytest-cov>=5.0",
     "defusedxml>=0.7",
     "types-docutils>=0.21",
+    "tox>=4.25.0",
+    "tox-uv>=1.13.1",
 ]
 docs = [
     "sphinx>=8.0",
@@ -116,3 +136,70 @@ exclude_lines = [
     "raise NotImplementedError",
     "\\.\\.\\.",
 ]
+
+# ---------------------------------------------------------------------------
+# Tox (driven by tox-uv) -- CI runs one job per environment (see test.yml).
+# ---------------------------------------------------------------------------
+[tool.tox]
+env_list = [
+    "py312",
+    "py313",
+    "py313-latest",
+    "style",
+    "typing",
+    "docs",
+]
+
+[tool.tox.env_run_base]
+description = "run the test suite (pytest + coverage) under {env_name}"
+runner = "uv-venv-lock-runner"
+package = "wheel"
+wheel_build_env = ".pkg"
+constrain_package_deps = true
+use_frozen_constraints = true
+dependency_groups = ["dev"]
+commands = [[
+    "pytest", "-v", "--tb=short", "--basetemp={env_tmp_dir}",
+    {replace = "posargs", default = [], extend = true},
+]]
+
+[tool.tox.env.style]
+description = "run linting and style checks with ruff"
+dependency_groups = ["dev"]
+skip_install = true
+commands = [["ruff", "check"]]
+
+[tool.tox.env.typing]
+description = "run the mypy static type checker (strict)"
+dependency_groups = ["dev"]
+commands = [["mypy"]]
+
+[tool.tox.env.docs]
+description = "build the HTML docs with warnings promoted to errors"
+dependency_groups = ["docs"]
+allowlist_externals = ["rm"]
+commands_pre = [["rm", "-rf", "docs/_build"]]
+commands = [["sphinx-build", "-E", "-W", "-b", "html", "docs", "docs/_build/html"]]
+
+# Canary env: resolve the newest versions allowed by our dependency ranges
+# (sphinx>=8.0, pyslang>=11,<12) instead of the pinned uv.lock, so a breaking
+# upstream release surfaces here rather than in a user's install.
+[tool.tox.env.py313-latest]
+description = "run the test suite against the newest allowed dependency versions (ignores uv.lock)"
+runner = "uv-venv-runner"
+constrain_package_deps = false
+use_frozen_constraints = false
+
+# ---------------------------------------------------------------------------
+# Editor-only type checker / formatter (not run in CI; mypy + ruff are the
+# authoritative gates -- see [tool.tox]).
+# ---------------------------------------------------------------------------
+[tool.pyright]
+pythonVersion = "3.12"
+include = ["src"]
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"
+
+[tool.autopep8]
+max-line-length = 100

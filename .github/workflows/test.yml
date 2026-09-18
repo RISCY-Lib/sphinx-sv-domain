@@ -1,0 +1,45 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+      - 'release/**'
+  pull_request:
+    branches:
+      - main
+  # Allow other workflows (e.g. publish.yml) to reuse this as a gate.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  tox:
+    name: ${{ matrix.toxenv }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # One job per tox environment (see [tool.tox] in pyproject.toml).
+        # py312/py313 run the test suite on each supported interpreter; the
+        # remaining envs run once on the newest supported Python.
+        include:
+          - { toxenv: py312, python: "3.12" }
+          - { toxenv: py313, python: "3.13" }
+          # Canary: newest versions allowed by our dependency ranges (no lockfile),
+          # so upstream releases that break us surface here.
+          - { toxenv: py313-latest, python: "3.13" }
+          - { toxenv: style, python: "3.13" }
+          - { toxenv: typing, python: "3.13" }
+          - { toxenv: docs, python: "3.13" }
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.0
+        with:
+          enable-cache: true
+      - name: Install Python ${{ matrix.python }}
+        run: uv python install ${{ matrix.python }}
+      - name: Run tox -e ${{ matrix.toxenv }}
+        run: uv run tox -e ${{ matrix.toxenv }}
