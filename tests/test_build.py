@@ -195,6 +195,23 @@ def test_autodoc_package_recurses_into_members(app: Sphinx) -> None:
 
 
 @pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_autoclass_renders_data_members(app: Sphinx) -> None:
+    app.build()
+    html = (app.outdir / "index.html").read_text()
+    sigs = _signatures(html)
+    text = _text(html)
+    assert sigs["class-txn_item"] == "class txn_item"
+    # Data members render under a Properties rubric with type, name and doc.
+    assert '<p class="rubric">Properties</p>' in html
+    assert "int unsigned burst_len" in text
+    assert "Number of beats in the burst." in text
+    assert "bit [7:0] tag" in text
+    assert "Internal routing tag." in text
+    # Methods declared in the class still render alongside the properties.
+    assert sigs["function-txn_item-convert2string"].startswith("function convert2string")
+
+
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
 def test_cross_references_resolve(app: Sphinx) -> None:
     app.build()
     html = (app.outdir / "index.html").read_text()

@@ -189,8 +189,17 @@ class SVAutoObject(SphinxDirective):
             sig = enum.name if enum.value is None else f"{enum.name} = {enum.value}"
             lines += _member_lines(pad, "enumerator", sig, enum.doc)
         if decl.members:
+            if decl.kind == "class":
+                lines += [f"{pad}.. rubric:: Properties", ""]
             for member in decl.members:
-                lines.append(f"{pad}* ``{member.type} {member.name}``")
+                signature = f"{member.type} {member.name}".strip()
+                lines.append(f"{pad}* ``{signature}``")
+                doc = getattr(member, "doc", "")
+                if doc:
+                    lines.append("")
+                    body = pad + "  "
+                    lines += [body + line if line else "" for line in doc.splitlines()]
+                    lines.append("")
             lines.append("")
 
         skip_kinds = {"function", "task"} if "no-functions" in self.options else set()

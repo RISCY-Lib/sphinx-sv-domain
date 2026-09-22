@@ -8,8 +8,9 @@ synthesise the equivalent :doc:`manual directive <directives>`, so autodoc and
 hand-written docs render, index and cross-reference identically.
 
 Doc-comments are the ``//`` or ``/* */`` comments immediately preceding a
-declaration; their body is treated as reST.  A trailing comment on a port or
-parameter line becomes that member's description.
+declaration; their body is treated as reST.  A trailing comment on a port,
+parameter or class-property line becomes that member's description, as does a
+``//`` / ``/* */`` block written on the line(s) directly above it.
 
 Pointing at sources
 -------------------
@@ -98,5 +99,9 @@ Documenting a package renders the enum, struct and functions declared inside it:
 
 Classes
 ~~~~~~~
+
+Documenting a class renders its data members (properties) under a *Properties*
+rubric -- each with its type and doc-comment -- alongside the functions and
+tasks declared inside it:
 
 .. sv:autopackage:: counter_txn_pkg

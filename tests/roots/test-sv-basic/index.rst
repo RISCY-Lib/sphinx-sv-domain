@@ -93,6 +93,8 @@ Autodoc
 
 .. sv:autopackage:: counter_pkg
 
+.. sv:autoclass:: txn_item
+
 Index
 -----
 
