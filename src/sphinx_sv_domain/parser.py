@@ -95,6 +95,11 @@ _LEADING_KW_RE = re.compile(
 # hunting for trailing ``//`` comments so a ``//`` inside a string is ignored.
 _STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"')
 _BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/")
+# A leading run of whitespace and/or comments that pyslang parks on a type
+# node's first token (the previous line's trailing comment, blank lines, and any
+# doc block above the member).  Stripped so a member type is not prefixed by
+# stray trivia; ``re.S`` lets a leading block comment span lines.
+_LEADING_TRIVIA_RE = re.compile(r"^(?:\s+|//[^\n]*|/\*.*?\*/)+", re.S)
 
 # A ``@group`` / ``@defgroup`` (or backslash ``\group``) doc tag that opens a
 # member group; everything after the tag on the line is the group title.
@@ -356,7 +361,7 @@ def _build_decl(node: object, objtype: str, parent: str | None, ctx: _Ctx) -> SV
     if objtype in ("module", "interface", "program", "package"):
         _fill_header(node, decl, ctx)
     elif objtype == "class":
-        _fill_class(node, decl)
+        _fill_class(node, decl, ctx)
     elif objtype in ("function", "task"):
         _fill_subroutine(node, decl)
     elif objtype == "typedef":
@@ -439,12 +444,32 @@ def _fill_header(node: object, decl: SVDecl, ctx: _Ctx) -> None:
             )
 
 
-def _fill_class(node: object, decl: SVDecl) -> None:
+def _fill_class(node: object, decl: SVDecl, ctx: _Ctx) -> None:
     decl.name = _token_text(getattr(node, "name", None))
     extends = getattr(node, "extendsClause", None)
     if extends is not None:
         base = _str(extends)
         decl.base = re.sub(r"^\s*extends\s+", "", base).strip() or None
+
+    for item in _iter_nodes(getattr(node, "items", []) or []):
+        # A data member is a ``ClassPropertyDeclaration`` wrapping a
+        # ``DataDeclaration``.  Methods (``ClassMethodDeclaration``) are captured
+        # by the tree walk, and nested typedefs/constraints are left alone here.
+        inner = getattr(item, "declaration", None)
+        if getattr(inner, "kind", None) != SyntaxKind.DataDeclaration:
+            continue
+        mtype = _clean_type(getattr(inner, "type", None))
+        # A dedicated doc block above the member wins; otherwise adopt a comment
+        # trailing it on the same line, mirroring how ports/parameters document.
+        lead = _leading_doc(item)
+        for mdecl in _iter_nodes(getattr(inner, "declarators", [])):
+            decl.members.append(
+                SVMember(
+                    name=_token_text(getattr(mdecl, "name", None)),
+                    type=mtype,
+                    doc=lead or _trailing_doc(mdecl, ctx),
+                )
+            )
 
 
 def _fill_subroutine(node: object, decl: SVDecl) -> None:
@@ -757,3 +782,55 @@ def _trailing_doc(node: object, ctx: _Ctx) -> str:
     except Exception:
         return ""
     return ctx.trailing.get(line, "")
+
+
+def _clean_type(node: object) -> str:
+    """Return a type node's text without the leading trivia pyslang parks on it.
+
+    ``str(type_node)`` includes the first token's *leading* trivia, which for an
+    unqualified class property is where pyslang stores the previous line's
+    trailing comment (plus any blank lines and doc block above the member).  A
+    real SystemVerilog type never begins with a comment, so any leading run of
+    whitespace and ``//`` / ``/* */`` comments is stripped as trivia; an inline
+    ``/* */`` *within* the type (e.g. a ``logic [/*w*/7:0]`` width annotation) is
+    preserved because it does not sit at the start.  Stripping the rendered text
+    (rather than counting raw trivia) is robust to pyslang collapsing a run of
+    blank lines to a single newline in ``str()``.
+    """
+    if node is None:
+        return ""
+    return _LEADING_TRIVIA_RE.sub("", str(node)).strip()
+
+
+def _leading_doc(node: object) -> str:
+    """Return the doc-comment block on the lines immediately preceding *node*.
+
+    Like :func:`_extract_doc` but hardened for members packed one per line: a
+    comment trailing the *previous* member's code is parked in this node's
+    leading trivia before any newline, so it is skipped rather than misread as
+    this member's documentation.  Only the contiguous comment run adjacent to
+    the node (after the last blank line) is kept.
+    """
+    try:
+        token = node.getFirstToken()  # type: ignore[attr-defined]
+    except Exception:
+        return ""
+    lines: list[str] = []
+    newline_run = 0
+    for triv in list(getattr(token, "trivia", []) or []):
+        kind = str(getattr(triv, "kind", ""))
+        if "LineComment" in kind or "BlockComment" in kind:
+            if newline_run == 0:
+                # No newline yet in this run: the comment trails the previous
+                # line's code and never documents this node.
+                continue
+            lines.append(_clean_comment(_raw_text(triv)))
+            newline_run = 0
+        elif "EndOfLine" in kind:
+            newline_run += 1
+            if newline_run >= 2:
+                # A blank line breaks the block; only comments after it count.
+                lines = []
+        elif "Whitespace" not in kind:
+            lines = []
+    return "\n".join(lines).strip()

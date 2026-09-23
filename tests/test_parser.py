@@ -282,6 +282,87 @@ def test_class_extends(decls: dict[tuple[str, str], parser.SVDecl]) -> None:
     assert packet.base == "BaseTxn"
 
 
+def test_class_data_members_parsed() -> None:
+    src = textwrap.dedent(
+        """
+        class txn extends uvm_sequence_item;
+          rand int unsigned burst_len;   // number of beats
+          local bit [7:0] tag;           // internal tag
+          // A dedicated leading doc block.
+          // Second line.
+          string name;
+          int a, b;                      // paired fields
+          static int count;
+          typedef int local_t;           // nested type, not a member
+        endclass
+        """
+    )
+    (decl,) = parser.parse_source(src).declarations
+    # Qualifiers (rand/local/static) are dropped from the type; a nested typedef
+    # is not a data member; multiple declarators share their type and trailing doc.
+    assert [(m.name, m.type, m.doc) for m in decl.members] == [
+        ("burst_len", "int unsigned", "number of beats"),
+        ("tag", "bit [7:0]", "internal tag"),
+        ("name", "string", "A dedicated leading doc block.\nSecond line."),
+        ("a", "int", "paired fields"),
+        ("b", "int", "paired fields"),
+        ("count", "int", ""),
+    ]
+
+
+def test_class_member_after_trailing_comment_is_not_polluted() -> None:
+    # pyslang parks a member's trailing comment in the *next* member's leading
+    # trivia; an unqualified member must not inherit it as its type or its doc.
+    src = textwrap.dedent(
+        """
+        class C;
+          int burst_len;   // beats
+          int tag;
+        endclass
+        """
+    )
+    (decl,) = parser.parse_source(src).declarations
+    assert [(m.name, m.type, m.doc) for m in decl.members] == [
+        ("burst_len", "int", "beats"),
+        ("tag", "int", ""),
+    ]
+
+
+def test_class_member_type_survives_blank_line_separation() -> None:
+    # A blank line before a documented, unqualified member is the idiomatic
+    # layout.  pyslang collapses the blank-line run to a single newline in the
+    # type node's str(), so the type text must be cleaned by stripping leading
+    # trivia -- never by counting raw trivia characters (which over-strips and
+    # chews the leading character(s) off the type name).
+    src = textwrap.dedent(
+        """
+        class C;
+          // First field.
+          int alpha;
+
+          // Second field.
+          bit [7:0] beta;
+
+
+          my_pkg::payload_t gamma;
+        endclass
+        """
+    )
+    (decl,) = parser.parse_source(src).declarations
+    assert [(m.name, m.type, m.doc) for m in decl.members] == [
+        ("alpha", "int", "First field."),
+        ("beta", "bit [7:0]", "Second field."),
+        ("gamma", "my_pkg::payload_t", ""),
+    ]
+
+
+def test_class_member_type_keeps_inline_width_annotation() -> None:
+    # An inline ``/* */`` inside the type is part of the type, not leading trivia.
+    src = "class C;\n  logic [/*msb*/7:0] data;\nendclass"
+    (decl,) = parser.parse_source(src).declarations
+    assert decl.members[0].type == "logic [/*msb*/7:0]"
+
+
 def test_doc_comment_extraction(decls: dict[tuple[str, str], parser.SVDecl]) -> None:
     assert decls[("package", "util_pkg")].doc == "Utility helpers.\nSecond doc line."
     assert decls[("function", "add")].doc == "Add two integers."
