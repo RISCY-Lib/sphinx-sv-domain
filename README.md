@@ -43,4 +43,4 @@ A runnable example project is in [`examples/demo/`](examples/demo/).
 
 ## License
 
-BSD (see [`LICENSE`](LICENSE)).
+LGPL-2.1 (see [`LICENSE`](LICENSE)).
