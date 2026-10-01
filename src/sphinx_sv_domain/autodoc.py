@@ -182,7 +182,7 @@ class SVAutoObject(SphinxDirective):
             lines += _group_section_lines(
                 pad, "parameter", decl.params, decl.param_groups, _param_signature
             )
-        if decl.ports:
+        if decl.ports and decl.kind != "modport":
             lines += [f"{pad}.. rubric:: Ports", ""]
             lines += _group_section_lines(
                 pad, "port", decl.ports, decl.port_groups, _port_signature
@@ -193,6 +193,8 @@ class SVAutoObject(SphinxDirective):
         if decl.members:
             if decl.kind == "class":
                 lines += [f"{pad}.. rubric:: Properties", ""]
+            elif decl.kind == "interface":
+                lines += [f"{pad}.. rubric:: Signals", ""]
             for member in decl.members:
                 signature = f"{member.type} {member.name}".strip()
                 lines.append(f"{pad}* ``{signature}``")
@@ -295,6 +297,11 @@ def _signature_for(decl: SVDecl) -> str:
         args = ", ".join(_arg_text(a) for a in decl.args)
         prefix = f"{decl.return_type} " if decl.kind == "function" and decl.return_type else ""
         return f"{prefix}{decl.name}({args})"
+    if decl.kind == "modport" and decl.ports:
+        ports_str = ", ".join(
+            f"{p.direction} {p.name}".strip() for p in decl.ports
+        )
+        return f"{decl.name} ({ports_str})"
     return decl.name
 
 

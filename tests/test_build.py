@@ -264,6 +264,55 @@ def test_object_index_generated(app: Sphinx) -> None:
     assert "fifo" in _text(index_html)
 
 
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_autointerface_renders_signals_and_modports(app: Sphinx) -> None:
+    app.build()
+    html = (app.outdir / "index.html").read_text()
+    sigs = _signatures(html)
+    text = _text(html)
+    # The interface itself is registered and its signature renders.
+    assert "interface-axi_if" in sigs
+    assert sigs["interface-axi_if"] == "interface axi_if"
+    # Body signals appear under a Signals rubric.
+    assert '<p class="rubric">Signals</p>' in html
+    assert "logic [W-1:0] data" in text
+    assert "Data bus width" in text  # leading doc comment from axi_if.sv
+    # Modports are documented with their direction list in the signature.
+    assert "modport-axi_if-master" in sigs
+    assert "output data" in sigs["modport-axi_if-master"]
+    assert "modport-axi_if-slave" in sigs
+    assert "input data" in sigs["modport-axi_if-slave"]
+    # Modport doc comments are preserved.
+    assert "Master modport for initiating transfers." in text
+
+
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_manual_modport_directive_and_role(app: Sphinx) -> None:
+    app.build()
+    html = (app.outdir / "index.html").read_text()
+    sigs = _signatures(html)
+    # A hand-written sv:modport registers the modport under the enclosing interface.
+    assert "modport-bus_if-host" in sigs
+    assert sigs["modport-bus_if-host"] == "modport host(output req, input ack)"
+    # The sv:modport role creates a working internal link.
+    hrefs = {
+        _text(m.group(2)): m.group(1)
+        for m in re.finditer(
+            r'<a class="reference internal" href="([^"]*)"[^>]*>(.*?)</a>', html, re.S
+        )
+    }
+    assert hrefs.get("bus_if::host") == "#modport-bus_if-host"
+
+
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_autointerface_modports_registered_in_domain(app: Sphinx) -> None:
+    app.build()
+    objects = app.env.get_domain("sv").objects  # type: ignore[attr-defined]
+    assert objects["axi_if"].objtype == "interface"
+    assert objects["axi_if::master"].objtype == "modport"
+    assert objects["axi_if::slave"].objtype == "modport"
+
+
 @pytest.mark.sphinx("html", testroot="sv-warnings", freshenv=True)
 def test_warning_cases(app: Sphinx, warning: StringIO) -> None:
     app.build()

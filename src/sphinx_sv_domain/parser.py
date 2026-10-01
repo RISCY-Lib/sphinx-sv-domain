@@ -278,6 +278,12 @@ def parse_signature(sig: str, objtype: str) -> SVDecl:
             return member
         return _fallback_decl(sig, objtype)
 
+    if objtype == "modport":
+        member = _parse_modport_signature(sig)
+        if member is not None:
+            return member
+        return _fallback_decl(sig, objtype)
+
     wrapped = _wrap_signature(sig, objtype)
     if wrapped is not None:
         try:
@@ -331,6 +337,20 @@ def _top_level_nodes(root: object) -> Iterator[object]:
 
 def _walk(node: object, parent: str | None, ctx: _Ctx, out: list[SVDecl]) -> None:
     kind = getattr(node, "kind", None)
+    # ModportDeclaration can hold multiple ModportItem nodes; emit one SVDecl per item.
+    if kind == SyntaxKind.ModportDeclaration:
+        decl_doc = _extract_doc(node)
+        for idx, item in enumerate(_iter_nodes(getattr(node, "items", []) or [])):
+            mp = SVDecl(
+                kind="modport",
+                name=_token_text(getattr(item, "name", None)) or "<anonymous>",
+                parent=parent,
+                doc=decl_doc if idx == 0 else "",
+            )
+            mp.line, mp.column = _location(item, ctx.sm)
+            _fill_modport(item, mp)
+            out.append(mp)
+        return
     # ClassMethodDeclaration wraps a FunctionDeclaration/TaskDeclaration; unwrap it.
     if kind == SyntaxKind.ClassMethodDeclaration:
         node = getattr(node, "declaration", node)
@@ -379,6 +399,8 @@ def _build_decl(node: object, objtype: str, parent: str | None, ctx: _Ctx) -> SV
 
     if objtype in ("module", "interface", "program", "package"):
         _fill_header(node, decl, ctx)
+        if objtype == "interface":
+            _fill_interface_members(node, decl, ctx)
     elif objtype == "class":
         _fill_class(node, decl, ctx)
     elif objtype in ("function", "task"):
@@ -491,6 +513,41 @@ def _fill_class(node: object, decl: SVDecl, ctx: _Ctx) -> None:
             )
 
 
+def _fill_interface_members(node: object, decl: SVDecl, ctx: _Ctx) -> None:
+    """Capture interface body data declarations as SVMember items on *decl*."""
+    for child in _iter_nodes(getattr(node, "members", []) or []):
+        if getattr(child, "kind", None) != SyntaxKind.DataDeclaration:
+            continue
+        mtype = _clean_type(getattr(child, "type", None))
+        lead = _leading_doc(child)
+        for mdecl in _iter_nodes(getattr(child, "declarators", [])):
+            decl.members.append(
+                SVMember(
+                    name=_token_text(getattr(mdecl, "name", None)),
+                    type=mtype,
+                    doc=lead or _trailing_doc(mdecl, ctx),
+                )
+            )
+
+
+def _fill_modport(item: object, decl: SVDecl) -> None:
+    """Fill the port list of a modport SVDecl from a ModportItem syntax node."""
+    port_list = getattr(item, "ports", None)
+    if port_list is None:
+        return
+    for port_group in _iter_nodes(getattr(port_list, "ports", [])):
+        if getattr(port_group, "kind", None) != SyntaxKind.ModportSimplePortList:
+            continue
+        direction = _token_text(getattr(port_group, "direction", None))
+        for named_port in _iter_nodes(getattr(port_group, "ports", [])):
+            decl.ports.append(
+                SVPort(
+                    name=_token_text(getattr(named_port, "name", None)),
+                    direction=direction,
+                )
+            )
+
+
 def _fill_subroutine(node: object, decl: SVDecl) -> None:
     # node may be a FunctionDeclaration (with a .prototype child) or a
     # FunctionPrototype directly (bodyless class method prototype).
@@ -579,6 +636,19 @@ def _parse_member_signature(sig: str, objtype: str) -> SVDecl | None:
     if objtype == "enumerator" and container.enumerators:
         enum = container.enumerators[0]
         return SVDecl(kind="enumerator", name=enum.name, default=enum.value)
+    return None
+
+
+def _parse_modport_signature(sig: str) -> SVDecl | None:
+    """Parse a modport signature fragment like 'master (output data, input ready)'."""
+    wrapped = f"interface __sig__ (); modport {sig.rstrip(';')}; endinterface"
+    try:
+        result = parse_source(wrapped)
+    except Exception:
+        return None
+    for decl in result.declarations:
+        if decl.kind == "modport" and decl.name and decl.name != "<anonymous>":
+            return decl
     return None
 
 
