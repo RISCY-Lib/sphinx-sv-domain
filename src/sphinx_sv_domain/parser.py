@@ -342,13 +342,13 @@ def _walk(node: object, parent: str | None, ctx: _Ctx, out: list[SVDecl]) -> Non
         ]
         proto_node = getattr(node, "prototype", node)
         kw = _token_text(getattr(proto_node, "keyword", None))
-        objtype = "task" if kw == "task" else "function"
-        decl = _build_decl(proto_node, objtype, parent, ctx)
+        proto_objtype = "task" if kw == "task" else "function"
+        decl = _build_decl(proto_node, proto_objtype, parent, ctx)
         decl.doc = _extract_doc(node)
         decl.qualifiers = qualifiers
         out.append(decl)
         return
-    objtype = _KIND_BY_SYNTAX.get(kind)
+    objtype: str | None = _KIND_BY_SYNTAX.get(kind)
     if objtype is None:
         return
 
