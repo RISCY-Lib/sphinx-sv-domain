@@ -210,6 +210,7 @@ class SVDecl:
     datatype: str = ""
     direction: str = ""
     default: str | None = None
+    qualifiers: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -334,7 +335,25 @@ def _walk(node: object, parent: str | None, ctx: _Ctx, out: list[SVDecl]) -> Non
     if kind == SyntaxKind.ClassMethodDeclaration:
         node = getattr(node, "declaration", node)
         kind = getattr(node, "kind", None)
-    objtype = _KIND_BY_SYNTAX.get(kind)
+    elif kind == SyntaxKind.ClassMethodPrototype:
+        # Bodyless prototype (pure virtual or extern). Unwrap the inner
+        # FunctionPrototype, determine function vs task from its keyword, and
+        # emit a declaration with the outer qualifier list and the leading doc
+        # comment (which lives on the outer node's first token).
+        qualifiers = [
+            _token_text(q)
+            for q in (getattr(node, "qualifiers", []) or [])
+            if _token_text(q)
+        ]
+        proto_node = getattr(node, "prototype", node)
+        kw = _token_text(getattr(proto_node, "keyword", None))
+        proto_objtype = "task" if kw == "task" else "function"
+        decl = _build_decl(proto_node, proto_objtype, parent, ctx)
+        decl.doc = _extract_doc(node)
+        decl.qualifiers = qualifiers
+        out.append(decl)
+        return
+    objtype: str | None = _KIND_BY_SYNTAX.get(kind)
     if objtype is None:
         return
 
@@ -473,9 +492,11 @@ def _fill_class(node: object, decl: SVDecl, ctx: _Ctx) -> None:
 
 
 def _fill_subroutine(node: object, decl: SVDecl) -> None:
+    # node may be a FunctionDeclaration (with a .prototype child) or a
+    # FunctionPrototype directly (bodyless class method prototype).
     proto = getattr(node, "prototype", None)
     if proto is None:
-        return
+        proto = node
     decl.name = _str(getattr(proto, "name", None))
     ret = _str(getattr(proto, "returnType", None))
     decl.return_type = ret or ("void" if decl.kind == "function" else None)

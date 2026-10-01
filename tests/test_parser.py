@@ -470,3 +470,35 @@ def test_parse_file(tmp_path: object) -> None:
     (decl,) = result.declarations
     assert decl.name == "filemod"
     assert decl.doc == "A file module."
+
+
+def test_class_method_prototypes_are_captured() -> None:
+    src = textwrap.dedent(
+        """
+        class base;
+          virtual function void do_print();
+          endfunction
+          // Gets the size.
+          pure virtual function int get_size();
+          extern function void configure(int n);
+          extern task reset();
+        endclass
+        """
+    )
+    decls = {(d.kind, d.name): d for d in parser.parse_source(src).declarations}
+    assert ("function", "do_print") in decls
+    assert ("function", "get_size") in decls, "pure virtual method should be captured"
+    assert ("function", "configure") in decls, "extern function should be captured"
+    assert ("task", "reset") in decls, "extern task should be captured"
+
+    get_size = decls[("function", "get_size")]
+    assert get_size.qualifiers == ["pure", "virtual"]
+    assert get_size.return_type == "int"
+    assert get_size.doc == "Gets the size."
+
+    configure = decls[("function", "configure")]
+    assert configure.qualifiers == ["extern"]
+    assert configure.args[0].name == "n"
+
+    reset = decls[("task", "reset")]
+    assert reset.qualifiers == ["extern"]

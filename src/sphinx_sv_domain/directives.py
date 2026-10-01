@@ -165,6 +165,7 @@ class SVObject(ObjectDescription[str]):
         "no-typesetting": directives.flag,
         "localparam": directives.flag,
         "extends": directives.unchanged,
+        "qualifiers": directives.unchanged,
     }
 
     def handle_signature(self, sig: str, signode: desc_signature) -> str:
@@ -183,6 +184,10 @@ class SVObject(ObjectDescription[str]):
         signode["fullname"] = fullname
         signode["sv:objtype"] = self.objtype
 
+        if self.objtype in ("function", "task"):
+            for q in self.options.get("qualifiers", "").split():
+                signode += addnodes.desc_sig_keyword(q, q)
+                signode += addnodes.desc_sig_space()
         keyword = _KEYWORDS.get(self.objtype, "")
         if self.objtype == "parameter" and "localparam" in self.options:
             keyword = "localparam"
