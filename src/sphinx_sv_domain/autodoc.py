@@ -152,6 +152,8 @@ class SVAutoObject(SphinxDirective):
 
         if decl.kind == "class" and decl.base:
             lines.append(f"{body}:extends: {decl.base}")
+        if decl.qualifiers:
+            lines.append(f"{body}:qualifiers: {' '.join(decl.qualifiers)}")
         if "no-index" in self.options:
             lines.append(f"{body}:no-index:")
         lines.append("")
