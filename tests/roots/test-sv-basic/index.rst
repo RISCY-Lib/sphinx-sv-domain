@@ -95,6 +95,21 @@ Autodoc
 
 .. sv:autoclass:: txn_item
 
+.. sv:autointerface:: axi_if
+
+Manual modport
+--------------
+
+.. sv:interface:: bus_if
+
+   A manual interface with explicit modport.
+
+   .. sv:modport:: host (output req, input ack)
+
+      Host initiator port.
+
+Modport cross reference: :sv:modport:`bus_if::host`.
+
 Index
 -----
 

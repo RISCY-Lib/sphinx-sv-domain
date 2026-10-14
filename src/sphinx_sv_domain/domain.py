@@ -107,6 +107,7 @@ class SVDomain(Domain):
         "covergroup": ObjType(_("covergroup"), "covergroup", "obj"),
         "function": ObjType(_("function"), "function", "func", "obj"),
         "task": ObjType(_("task"), "task", "obj"),
+        "modport": ObjType(_("modport"), "modport", "obj"),
     }
 
     directives: ClassVar[dict[str, Any]] = {
@@ -124,6 +125,7 @@ class SVDomain(Domain):
         "covergroup": SVObject,
         "function": SVObject,
         "task": SVObject,
+        "modport": SVObject,
         "group": SVGroup,
         "namespace": SVNamespace,
         "namespace-push": SVNamespacePush,
@@ -152,6 +154,7 @@ class SVDomain(Domain):
         "function": SVXRefRole(),
         "func": SVXRefRole(),
         "task": SVXRefRole(),
+        "modport": SVXRefRole(),
         "obj": SVXRefRole(),
     }
 

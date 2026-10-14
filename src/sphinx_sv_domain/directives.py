@@ -67,6 +67,7 @@ _KEYWORDS = {
     "port": "",
     "parameter": "parameter",
     "enumerator": "",
+    "modport": "modport",
 }
 
 #: Built-in data types, net types and qualifiers that are never linked as the
@@ -239,6 +240,8 @@ class SVObject(ObjectDescription[str]):
             self._render_extends(signode, decl, namespace, sig_xrefs)
         elif objtype in ("port", "parameter", "enumerator"):
             self._render_typed_leaf(signode, decl, namespace, sig_xrefs)
+        elif objtype == "modport":
+            self._render_ports(signode, decl, namespace, sig_xrefs)
         elif objtype == "typedef":
             if decl.underlying:
                 self._append_typed_annotation(signode, ": ", decl.underlying, namespace, sig_xrefs)

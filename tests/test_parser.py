@@ -472,6 +472,82 @@ def test_parse_file(tmp_path: object) -> None:
     assert decl.doc == "A file module."
 
 
+def test_interface_body_signals_captured() -> None:
+    src = textwrap.dedent(
+        """
+        interface data_if;
+          logic [31:0] data;   // Payload data.
+          logic valid, ready;
+        endinterface
+        """
+    )
+    (decl,) = parser.parse_source(src).declarations
+    assert decl.kind == "interface"
+    assert [(m.name, m.type, m.doc) for m in decl.members] == [
+        ("data", "logic [31:0]", "Payload data."),
+        ("valid", "logic", ""),
+        ("ready", "logic", ""),
+    ]
+
+
+def test_interface_modports_parsed() -> None:
+    src = textwrap.dedent(
+        """
+        interface axi_if;
+          logic [7:0] data;
+          logic valid, ready;
+          modport master (output data, output valid, input ready);
+          modport slave  (input data, input valid, output ready);
+        endinterface
+        """
+    )
+    decls = {(d.kind, d.name): d for d in parser.parse_source(src).declarations}
+    assert ("modport", "master") in decls
+    assert ("modport", "slave") in decls
+    master = decls[("modport", "master")]
+    assert master.parent == "axi_if"
+    assert [(p.direction, p.name) for p in master.ports] == [
+        ("output", "data"),
+        ("output", "valid"),
+        ("input", "ready"),
+    ]
+    slave = decls[("modport", "slave")]
+    assert [(p.direction, p.name) for p in slave.ports] == [
+        ("input", "data"),
+        ("input", "valid"),
+        ("output", "ready"),
+    ]
+
+
+def test_modport_doc_comment_captured() -> None:
+    src = textwrap.dedent(
+        """
+        interface my_if;
+          // Host initiator view.
+          modport host (output req, input ack);
+        endinterface
+        """
+    )
+    decls = {(d.kind, d.name): d for d in parser.parse_source(src).declarations}
+    assert decls[("modport", "host")].doc == "Host initiator view."
+
+
+def test_parse_signature_modport_with_ports() -> None:
+    decl = parser.parse_signature("master (output data, input ready)", "modport")
+    assert decl.kind == "modport"
+    assert decl.name == "master"
+    assert [(p.direction, p.name) for p in decl.ports] == [
+        ("output", "data"),
+        ("input", "ready"),
+    ]
+
+
+def test_parse_signature_modport_name_only() -> None:
+    decl = parser.parse_signature("mp", "modport")
+    assert decl.kind == "modport"
+    assert decl.name == "mp"
+
+
 def test_class_method_prototypes_are_captured() -> None:
     src = textwrap.dedent(
         """
