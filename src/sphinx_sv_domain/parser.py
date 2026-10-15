@@ -29,11 +29,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pyslang.parsing import Token
+from pyslang import Bag, LanguageVersion, SourceManager
+from pyslang.parsing import ParserOptions, PreprocessorOptions, Token
 from pyslang.syntax import SyntaxKind, SyntaxTree
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Iterable, Iterator, Sequence
 
 __all__ = [
     "ParseResult",
@@ -240,19 +241,81 @@ class _Ctx:
 # ---------------------------------------------------------------------------
 # Public entry points
 # ---------------------------------------------------------------------------
-def parse_source(text: str, *, group_banners: bool = True) -> ParseResult:
+#: Language standards accepted for the *std* option, mapped to pyslang versions.
+LANGUAGE_STANDARDS: dict[str, LanguageVersion] = {
+    "1364-2005": LanguageVersion.v1364_2005,
+    "1800-2017": LanguageVersion.v1800_2017,
+    "1800-2023": LanguageVersion.v1800_2023,
+}
+
+
+def _make_bag(
+    include_dirs: Sequence[str],
+    defines: Sequence[str],
+    std: str | None,
+) -> Bag | None:
+    """Build the pyslang option bag, or ``None`` when nothing is configured."""
+    if not include_dirs and not defines and not std:
+        return None
+    pre = PreprocessorOptions()
+    parse = ParserOptions()
+    if include_dirs:
+        pre.additionalIncludePaths = [str(d) for d in include_dirs]
+    if defines:
+        pre.predefines = list(defines)
+    if std:
+        try:
+            version = LANGUAGE_STANDARDS[std]
+        except KeyError:
+            allowed = ", ".join(LANGUAGE_STANDARDS)
+            msg = f"unknown SystemVerilog standard {std!r} (expected one of {allowed})"
+            raise ValueError(msg) from None
+        pre.languageVersion = version
+        parse.languageVersion = version
+    return Bag([pre, parse])
+
+
+def parse_source(
+    text: str,
+    *,
+    group_banners: bool = True,
+    include_dirs: Sequence[str] = (),
+    defines: Sequence[str] = (),
+    std: str | None = None,
+) -> ParseResult:
     """Parse a block of SystemVerilog *text* into a :class:`ParseResult`.
 
     When *group_banners* is false, symmetric banner comments are not treated as
-    port/parameter group markers (``@group`` tags still are).
+    port/parameter group markers (``@group`` tags still are).  *include_dirs*
+    are searched for ```include`` files, *defines* (``NAME`` or ``NAME=VALUE``)
+    are predefined macros, and *std* selects the language standard (one of
+    :data:`LANGUAGE_STANDARDS`).
     """
-    tree = SyntaxTree.fromText(text)
+    bag = _make_bag(include_dirs, defines, std)
+    if bag is None:
+        tree = SyntaxTree.fromText(text)
+    else:
+        tree = SyntaxTree.fromText(text, SourceManager(), options=bag)
     return _parse_tree(tree, text, group_banners=group_banners)
 
 
-def parse_file(path: str | Path, *, group_banners: bool = True) -> ParseResult:
-    """Parse the SystemVerilog file at *path* into a :class:`ParseResult`."""
-    tree = SyntaxTree.fromFile(str(path))
+def parse_file(
+    path: str | Path,
+    *,
+    group_banners: bool = True,
+    include_dirs: Sequence[str] = (),
+    defines: Sequence[str] = (),
+    std: str | None = None,
+) -> ParseResult:
+    """Parse the SystemVerilog file at *path* into a :class:`ParseResult`.
+
+    See :func:`parse_source` for the meaning of the keyword arguments.
+    """
+    bag = _make_bag(include_dirs, defines, std)
+    if bag is None:
+        tree = SyntaxTree.fromFile(str(path))
+    else:
+        tree = SyntaxTree.fromFile(str(path), SourceManager(), bag)
     try:
         text = Path(path).read_text(encoding="utf-8")
     except OSError:

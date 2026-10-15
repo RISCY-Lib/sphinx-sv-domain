@@ -58,3 +58,38 @@ would otherwise be misread as group titles.
 .. code-block:: python
 
    sv_autodoc_group_banners = False  # opt out of banner detection
+
+.. _config-preprocessor:
+
+Preprocessor options
+--------------------
+
+Real source trees use ```include`` files and macros. Three values pass this
+information to the pyslang preprocessor.
+
+``sv_autodoc_include_dirs``
+   :Type: ``str`` or ``list[str]``
+   :Default: ``[]``
+
+   Directories that pyslang searches for ```include`` files. A relative path
+   starts at the Sphinx source directory.
+
+``sv_autodoc_defines``
+   :Type: ``str`` or ``list[str]``
+   :Default: ``[]``
+
+   Predefined macros. Write each one as ``NAME`` or ``NAME=VALUE``. A
+   declaration inside ```ifdef NAME`` becomes visible when ``NAME`` is defined.
+
+``sv_autodoc_std``
+   :Type: ``str`` or ``None``
+   :Default: ``None``
+
+   The language standard. The allowed values are ``"1364-2005"``,
+   ``"1800-2017"``, and ``"1800-2023"``. ``None`` selects the pyslang default.
+
+.. code-block:: python
+
+   sv_autodoc_include_dirs = ["../rtl/include", "../uvm/src"]
+   sv_autodoc_defines = ["SYNTHESIS", "DEPTH=16"]
+   sv_autodoc_std = "1800-2017"
