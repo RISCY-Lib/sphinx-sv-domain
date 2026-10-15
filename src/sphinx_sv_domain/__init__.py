@@ -47,6 +47,7 @@ def setup(app: Sphinx) -> ExtensionMetadata:
     """Register the SystemVerilog domain with Sphinx."""
     # Imported lazily so that importing this package never eagerly imports
     # pyslang (e.g. for ``sphinx_sv_domain.__version__``).
+    from sphinx_sv_domain.autodoc import reset_reported_diagnostics
     from sphinx_sv_domain.domain import SVDomain
 
     app.add_config_value("sv_autodoc_source_path", None, "env", types=(str, list))
@@ -64,11 +65,16 @@ def setup(app: Sphinx) -> ExtensionMetadata:
     app.add_config_value("sv_autodoc_include_dirs", [], "env", types=(str, list))
     app.add_config_value("sv_autodoc_defines", [], "env", types=(str, list))
     app.add_config_value("sv_autodoc_std", None, "env", types=(str,))
+    # When true, pyslang preprocessor and syntax diagnostics found in a source
+    # file are reported as Sphinx warnings located at ``file:line``.  Off by
+    # default because a file that documents cleanly may still carry diagnostics.
+    app.add_config_value("sv_autodoc_warn_on_parse_errors", False, "env", types=(bool,))
     app.add_domain(SVDomain)
 
     # Ship a small stylesheet so grouped ports/parameters read as nested blocks
     # even in themes that leave definition-list terms unstyled.
     app.add_css_file(_CSS_FILE)
+    app.connect("builder-inited", reset_reported_diagnostics)
     app.connect("build-finished", _copy_static_assets)
 
     return {

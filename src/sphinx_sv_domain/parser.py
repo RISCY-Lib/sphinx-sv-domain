@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from pyslang import Bag, LanguageVersion, SourceManager
+from pyslang import Bag, DiagnosticEngine, LanguageVersion, SourceManager
 from pyslang.parsing import ParserOptions, PreprocessorOptions, Token
 from pyslang.syntax import SyntaxKind, SyntaxTree
 
@@ -215,11 +215,25 @@ class SVDecl:
 
 
 @dataclass
+class SVDiagnostic:
+    """One pyslang diagnostic raised while preprocessing or parsing."""
+
+    #: 1-based line in *file*; 0 when pyslang gives no usable location.
+    line: int
+    #: The pyslang diagnostic code, for example ``DiagCode(ExpectedToken)``.
+    code: str
+    #: The human-readable message, for example ``expected ')'``.
+    message: str = ""
+    #: The file that holds the diagnostic; an included file differs from the parsed file.
+    file: str = ""
+
+
+@dataclass
 class ParseResult:
     """The declarations and diagnostics produced by parsing some source."""
 
     declarations: list[SVDecl] = field(default_factory=list)
-    diagnostics: list[tuple[int, str]] = field(default_factory=list)
+    diagnostics: list[SVDiagnostic] = field(default_factory=list)
 
 
 @dataclass
@@ -368,12 +382,16 @@ def parse_signature(sig: str, objtype: str) -> SVDecl:
 def _parse_tree(tree: SyntaxTree, text: str, *, group_banners: bool = True) -> ParseResult:
     result = ParseResult()
     sm = tree.sourceManager
+    engine = DiagnosticEngine(sm)
     for diag in tree.diagnostics:
         try:
             line = sm.getLineNumber(diag.location)
+            file = str(sm.getFileName(diag.location))
         except Exception:
-            line = 0
-        result.diagnostics.append((line, str(diag.code)))
+            line, file = 0, ""
+        result.diagnostics.append(
+            SVDiagnostic(line, str(diag.code), engine.formatMessage(diag), file)
+        )
 
     ctx = _Ctx(
         sm=sm,
