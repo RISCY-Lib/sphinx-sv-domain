@@ -140,6 +140,11 @@ class SVAutoObject(SphinxDirective):
         return files
 
     # -- reST synthesis -----------------------------------------------------
+    @property
+    def _no_index(self) -> bool:
+        """Whether synthesized objects, members included, skip registration."""
+        return "no-index" in self.options
+
     def _render(
         self,
         decl: SVDecl,
@@ -154,7 +159,7 @@ class SVAutoObject(SphinxDirective):
             lines.append(f"{body}:extends: {decl.base}")
         if decl.qualifiers:
             lines.append(f"{body}:qualifiers: {' '.join(decl.qualifiers)}")
-        if "no-index" in self.options:
+        if self._no_index:
             lines.append(f"{body}:no-index:")
         lines.append("")
 
@@ -180,16 +185,26 @@ class SVAutoObject(SphinxDirective):
         if decl.params:
             lines += [f"{pad}.. rubric:: Parameters", ""]
             lines += _group_section_lines(
-                pad, "parameter", decl.params, decl.param_groups, _param_signature
+                pad,
+                "parameter",
+                decl.params,
+                decl.param_groups,
+                _param_signature,
+                no_index=self._no_index,
             )
         if decl.ports and decl.kind != "modport":
             lines += [f"{pad}.. rubric:: Ports", ""]
             lines += _group_section_lines(
-                pad, "port", decl.ports, decl.port_groups, _port_signature
+                pad,
+                "port",
+                decl.ports,
+                decl.port_groups,
+                _port_signature,
+                no_index=self._no_index,
             )
         for enum in decl.enumerators:
             sig = enum.name if enum.value is None else f"{enum.name} = {enum.value}"
-            lines += _member_lines(pad, "enumerator", sig, enum.doc)
+            lines += _member_lines(pad, "enumerator", sig, enum.doc, no_index=self._no_index)
         if decl.members:
             if decl.kind == "class":
                 lines += [f"{pad}.. rubric:: Properties", ""]
@@ -242,9 +257,14 @@ def _group_by_parent(decls: list[SVDecl]) -> dict[str, list[SVDecl]]:
     return grouped
 
 
-def _member_lines(pad: str, kind: str, signature: str, doc: str) -> list[str]:
+def _member_lines(
+    pad: str, kind: str, signature: str, doc: str, *, no_index: bool = False
+) -> list[str]:
     """Emit an ``sv:<kind>`` directive for a member, with its doc as content."""
-    lines = [f"{pad}.. sv:{kind}:: {signature}", ""]
+    lines = [f"{pad}.. sv:{kind}:: {signature}"]
+    if no_index:
+        lines.append(f"{pad}{_INDENT}:no-index:")
+    lines.append("")
     if doc:
         body = pad + _INDENT
         lines += [body + line if line else "" for line in doc.splitlines()]
@@ -258,6 +278,8 @@ def _group_section_lines(
     members: Sequence[object],
     groups: list[SVGroup],
     signature: Callable[[object], str],
+    *,
+    no_index: bool = False,
 ) -> list[str]:
     """Emit the members of one section, ungrouped first then per ``sv:group``.
 
@@ -269,7 +291,11 @@ def _group_section_lines(
     i, n = 0, len(members)
 
     def _emit(at: str, member: object) -> None:
-        lines.extend(_member_lines(at, kind, signature(member), getattr(member, "doc", "")))
+        lines.extend(
+            _member_lines(
+                at, kind, signature(member), getattr(member, "doc", ""), no_index=no_index
+            )
+        )
 
     while i < n and getattr(members[i], "group", None) is None:
         _emit(pad, members[i])

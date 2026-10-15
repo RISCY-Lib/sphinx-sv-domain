@@ -68,6 +68,8 @@ The directives
       :type: flag
 
       Render without registering a cross-reference target or index entry.
+      The option applies to the object and all of its members. Use it to render
+      the same object on a second page without duplicate-object warnings.
 
 Examples
 --------

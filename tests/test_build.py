@@ -320,3 +320,19 @@ def test_warning_cases(app: Sphinx, warning: StringIO) -> None:
     assert "duplicate SystemVerilog module description of dup_mod" in warnings
     assert "does_not_exist" in warnings
     assert "could not find SystemVerilog module 'nonexistent_module'" in warnings
+
+
+@pytest.mark.sphinx("html", testroot="sv-noindex", freshenv=True)
+def test_autodoc_no_index_skips_members(app: Sphinx, warning: StringIO) -> None:
+    app.build()
+    # The same objects render on two pages: no duplicate-object warnings.
+    assert "duplicate" not in warning.getvalue()
+    # Only the detail page registers targets, members included.
+    objects = app.env.get_domain("sv").objects  # type: ignore[attr-defined]
+    assert {"counter", "counter::clk", "counter::WIDTH", "counter_pkg::IDLE"} <= set(objects)
+    assert all(entry.docname == "detail" for entry in objects.values())
+    # The summary page still renders the members, just without ids.
+    summary = (app.outdir / "summary.html").read_text()
+    assert "Counter width in bits." in summary
+    assert "port-counter-clk" not in summary
+    assert "enumerator-counter_pkg-IDLE" not in summary
