@@ -63,7 +63,9 @@ _INDENT = "   "
 
 # Per-process parse cache keyed by (path, mtime, group_banners); pyslang parsing
 # is pure so this is safe under Sphinx's process-based parallel builds.
-_PARSE_CACHE: dict[tuple[str, float, bool], ParseResult] = {}
+_PARSE_CACHE: dict[
+    tuple[str, float, bool, tuple[str, ...], tuple[str, ...], str | None], ParseResult
+] = {}
 
 
 class SVAutoObject(SphinxDirective):
@@ -86,7 +88,7 @@ class SVAutoObject(SphinxDirective):
         base_kind = self.name.split(":")[-1].removeprefix("auto")
         name = self.arguments[0].strip()
 
-        result = self._resolve(name, base_kind, self.config.sv_autodoc_group_banners)
+        result = self._resolve(name, base_kind)
         if result is None:
             return [self._warn(f"could not find SystemVerilog {base_kind} '{name}'")]
         path, decl, all_decls = result
@@ -106,14 +108,27 @@ class SVAutoObject(SphinxDirective):
         self,
         name: str,
         kind: str,
-        group_banners: bool,
     ) -> tuple[str, SVDecl, list[SVDecl]] | None:
         for path in self._candidate_files():
-            parsed = _parse_cached(path, group_banners)
+            parsed = self._parse(path)
             for decl in parsed.declarations:
                 if decl.kind == kind and decl.name == name:
                     return path, decl, parsed.declarations
         return None
+
+    def _parse(self, path: str) -> ParseResult:
+        cfg = self.config
+        include_dirs = tuple(
+            d if os.path.isabs(d) else os.path.join(self.env.srcdir, d)
+            for d in _as_list(cfg.sv_autodoc_include_dirs)
+        )
+        return _parse_cached(
+            path,
+            cfg.sv_autodoc_group_banners,
+            include_dirs,
+            tuple(_as_list(cfg.sv_autodoc_defines)),
+            cfg.sv_autodoc_std,
+        )
 
     def _candidate_files(self) -> list[str]:
         explicit = self.options.get("file")
@@ -236,15 +251,36 @@ class SVAutoObject(SphinxDirective):
 # ---------------------------------------------------------------------------
 # Module-level helpers
 # ---------------------------------------------------------------------------
-def _parse_cached(path: str, group_banners: bool) -> ParseResult:
+def _as_list(value: str | list[str] | tuple[str, ...] | None) -> list[str]:
+    if not value:
+        return []
+    return [value] if isinstance(value, str) else list(value)
+
+
+def _parse_cached(
+    path: str,
+    group_banners: bool,
+    include_dirs: tuple[str, ...] = (),
+    defines: tuple[str, ...] = (),
+    std: str | None = None,
+) -> ParseResult:
+    def parse() -> ParseResult:
+        return parse_file(
+            path,
+            group_banners=group_banners,
+            include_dirs=include_dirs,
+            defines=defines,
+            std=std,
+        )
+
     try:
         mtime = os.path.getmtime(path)
     except OSError:
-        return parse_file(path, group_banners=group_banners)
-    key = (path, mtime, group_banners)
+        return parse()
+    key = (path, mtime, group_banners, include_dirs, defines, std)
     cached = _PARSE_CACHE.get(key)
     if cached is None:
-        cached = parse_file(path, group_banners=group_banners)
+        cached = parse()
         _PARSE_CACHE[key] = cached
     return cached
 

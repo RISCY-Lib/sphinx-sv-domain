@@ -336,3 +336,17 @@ def test_autodoc_no_index_skips_members(app: Sphinx, warning: StringIO) -> None:
     assert "Counter width in bits." in summary
     assert "port-counter-clk" not in summary
     assert "enumerator-counter_pkg-IDLE" not in summary
+
+
+@pytest.mark.sphinx("html", testroot="sv-preproc", freshenv=True)
+def test_autodoc_preprocessor_options(app: Sphinx, warning: StringIO) -> None:
+    app.build()
+    page = (app.outdir / "index.html").read_text()
+    # The define-gated module resolves, and its include-supplied macro expands.
+    assert "gated_mod" in page
+    text = _text(page)
+    assert "[12-1:0]" in text
+    assert "= 16" in text
+    # A module gated behind an undefined macro stays invisible.
+    assert "could not find SystemVerilog module 'hidden_mod'" in warning.getvalue()
+    assert "could not find SystemVerilog module 'gated_mod'" not in warning.getvalue()

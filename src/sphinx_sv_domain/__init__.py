@@ -57,6 +57,13 @@ def setup(app: Sphinx) -> ExtensionMetadata:
     # port/parameter list open member groups; ``@group`` tags always do.  Turn
     # off if a project's decorative banners are misread as group titles.
     app.add_config_value("sv_autodoc_group_banners", True, "env", types=(bool,))
+    # Preprocessor settings handed to pyslang so ```include``, ``+define+`` macros
+    # and ```ifdef`` gating resolve as in the real build.  Include dirs are
+    # relative to the Sphinx source directory; defines are ``NAME`` or
+    # ``NAME=VALUE``; ``std`` is one of "1364-2005", "1800-2017", "1800-2023".
+    app.add_config_value("sv_autodoc_include_dirs", [], "env", types=(str, list))
+    app.add_config_value("sv_autodoc_defines", [], "env", types=(str, list))
+    app.add_config_value("sv_autodoc_std", None, "env", types=(str,))
     app.add_domain(SVDomain)
 
     # Ship a small stylesheet so grouped ports/parameters read as nested blocks

@@ -578,3 +578,41 @@ def test_class_method_prototypes_are_captured() -> None:
 
     reset = decls[("task", "reset")]
     assert reset.qualifiers == ["extern"]
+
+
+GATED_SOURCE = textwrap.dedent(
+    """
+    `ifdef FEATURE
+    module gated; endmodule
+    `endif
+    """
+)
+
+
+def _names(result: parser.ParseResult) -> set[str]:
+    return {d.name for d in result.declarations}
+
+
+def test_define_enables_gated_declaration() -> None:
+    assert "gated" not in _names(parser.parse_source(GATED_SOURCE))
+    assert "gated" in _names(parser.parse_source(GATED_SOURCE, defines=["FEATURE"]))
+    assert "gated" in _names(parser.parse_source(GATED_SOURCE, defines=["FEATURE=1"]))
+
+
+def test_include_dirs_resolve_includes(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    (tmp_path / "inc").mkdir()
+    (tmp_path / "inc" / "m.svh").write_text("module from_inc; endmodule\n")
+    src = tmp_path / "top.sv"
+    src.write_text('`include "m.svh"\n')
+    assert "from_inc" not in _names(parser.parse_file(src))
+    assert "from_inc" in _names(parser.parse_file(src, include_dirs=[str(tmp_path / "inc")]))
+
+
+def test_unknown_standard_rejected() -> None:
+    with pytest.raises(ValueError, match="unknown SystemVerilog standard"):
+        parser.parse_source("module m; endmodule", std="1800-1999")
+
+
+def test_standard_accepted() -> None:
+    result = parser.parse_source("module m; endmodule", std="1800-2023")
+    assert "m" in _names(result)
