@@ -34,6 +34,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Documentation :: Sphinx",
 ]
 dependencies = [
@@ -150,6 +151,8 @@ env_list = [
     "py311",
     "py312",
     "py313",
+    "py314",
+    "py315",
     "py313-latest",
     "style",
     "typing",

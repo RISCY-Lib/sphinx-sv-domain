@@ -18,11 +18,12 @@ jobs:
   tox:
     name: ${{ matrix.toxenv }}
     runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
       matrix:
         # One job per tox environment (see [tool.tox] in pyproject.toml).
-        # py310-oldest..py313 run the test suite on each supported interpreter; the
+        # py310-oldest..py315 run the test suite on each supported interpreter; the
         # remaining envs run once on the newest supported Python.
         include:
           # Floor: oldest Python and oldest dependency versions we declare.
@@ -30,6 +31,11 @@ jobs:
           - { toxenv: py311, python: "3.11" }
           - { toxenv: py312, python: "3.12" }
           - { toxenv: py313, python: "3.13" }
+          - { toxenv: py314, python: "3.14" }
+          # Experimental: 3.15 is pre-release and pyslang 11 has no 3.15 wheel
+          # (built from source; the suite segfaults in pyslang as of 3.15.0b2).
+          # Non-blocking until pyslang supports it.
+          - { toxenv: py315, python: "3.15", experimental: true }
           # Canary: newest versions allowed by our dependency ranges (no lockfile),
           # so upstream releases that break us surface here.
           - { toxenv: py313-latest, python: "3.13" }
