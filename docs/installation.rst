@@ -4,10 +4,17 @@ Installation
 Requirements
 ------------
 
-- Python 3.12 or newer
-- Sphinx 8.0 or newer
+- Python 3.10 or newer
+- Sphinx 7.4 or newer
 - `pyslang <https://github.com/MikePopoloski/slang>`_ 11.x (installed
   automatically as a dependency)
+
+.. note::
+
+   pyslang is a compiled C++ extension. ``pip install`` needs a pyslang wheel
+   that matches your Python version and platform. On a host with no matching
+   wheel and no C++ toolchain, the install can fail. In that case, use a
+   supported Python version or install the toolchain.
 
 Install the package
 -------------------
