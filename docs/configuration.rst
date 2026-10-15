@@ -88,6 +88,15 @@ information to the pyslang preprocessor.
    The language standard. The allowed values are ``"1364-2005"``,
    ``"1800-2017"``, and ``"1800-2023"``. ``None`` selects the pyslang default.
 
+``sv_autodoc_warn_on_parse_errors``
+   :Type: ``bool``
+   :Default: ``False``
+
+   Report each pyslang diagnostic as a Sphinx warning. The warning location is
+   the SystemVerilog file and line, for example ``rtl/fifo.sv:12``. Each file is
+   reported one time per build. Use this option with the preprocessor options
+   above to find which include directory or define is missing.
+
 .. code-block:: python
 
    sv_autodoc_include_dirs = ["../rtl/include", "../uvm/src"]

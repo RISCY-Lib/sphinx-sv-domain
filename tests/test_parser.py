@@ -391,7 +391,7 @@ def test_source_locations_are_recorded() -> None:
 def test_diagnostics_are_surfaced() -> None:
     result = parser.parse_source("module broken (input logic ; endmodule")
     assert result.diagnostics
-    assert all(isinstance(line, int) for line, _ in result.diagnostics)
+    assert all(isinstance(d.line, int) and d.message for d in result.diagnostics)
 
 
 @pytest.mark.parametrize(

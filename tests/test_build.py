@@ -350,3 +350,25 @@ def test_autodoc_preprocessor_options(app: Sphinx, warning: StringIO) -> None:
     # A module gated behind an undefined macro stays invisible.
     assert "could not find SystemVerilog module 'hidden_mod'" in warning.getvalue()
     assert "could not find SystemVerilog module 'gated_mod'" not in warning.getvalue()
+
+
+@pytest.mark.sphinx("html", testroot="sv-diagnostics", freshenv=True)
+def test_autodoc_warns_on_parse_errors(app: Sphinx, warning: StringIO) -> None:
+    app.build()
+    out = warning.getvalue()
+    # Located at the SystemVerilog source line, and reported once per file even
+    # though two directives resolve against it.
+    assert "broken.sv:3" in out
+    assert "SystemVerilog parse diagnostic" in out
+    assert out.count("broken.sv:3") == 1
+
+
+@pytest.mark.sphinx(
+    "html",
+    testroot="sv-diagnostics",
+    freshenv=True,
+    confoverrides={"sv_autodoc_warn_on_parse_errors": False},
+)
+def test_autodoc_parse_errors_silent_by_default(app: Sphinx, warning: StringIO) -> None:
+    app.build()
+    assert "parse diagnostic" not in warning.getvalue()

@@ -67,6 +67,16 @@ _PARSE_CACHE: dict[
     tuple[str, float, bool, tuple[str, ...], tuple[str, ...], str | None], ParseResult
 ] = {}
 
+# Files whose diagnostics were already reported in this build, so that every
+# ``sv:auto*`` directive naming the same file warns only once.  Cleared by
+# :func:`reset_reported_diagnostics` when a build starts.
+_REPORTED: set[str] = set()
+
+
+def reset_reported_diagnostics(*_args: object) -> None:
+    """Forget which files already had their diagnostics reported."""
+    _REPORTED.clear()
+
 
 class SVAutoObject(SphinxDirective):
     """Document a SystemVerilog declaration parsed from a source file."""
@@ -111,6 +121,7 @@ class SVAutoObject(SphinxDirective):
     ) -> tuple[str, SVDecl, list[SVDecl]] | None:
         for path in self._candidate_files():
             parsed = self._parse(path)
+            self._report_diagnostics(path, parsed)
             for decl in parsed.declarations:
                 if decl.kind == kind and decl.name == name:
                     return path, decl, parsed.declarations
@@ -129,6 +140,25 @@ class SVAutoObject(SphinxDirective):
             tuple(_as_list(cfg.sv_autodoc_defines)),
             cfg.sv_autodoc_std,
         )
+
+    def _report_diagnostics(self, path: str, parsed: ParseResult) -> None:
+        """Warn once per build and file about pyslang diagnostics, if enabled."""
+        if not self.config.sv_autodoc_warn_on_parse_errors or not parsed.diagnostics:
+            return
+        if path in _REPORTED:
+            return
+        _REPORTED.add(path)
+        for diag in parsed.diagnostics:
+            where = diag.file if diag.file and os.path.isabs(diag.file) else path
+            location = f"{where}:{diag.line}" if diag.line else where
+            logger.warning(
+                "SystemVerilog parse diagnostic: %s [%s]",
+                diag.message,
+                diag.code,
+                location=location,
+                type="sv",
+                subtype="parse",
+            )
 
     def _candidate_files(self) -> list[str]:
         explicit = self.options.get("file")
