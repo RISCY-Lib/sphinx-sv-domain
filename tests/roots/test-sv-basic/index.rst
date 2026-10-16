@@ -132,3 +132,5 @@ Manual parameterized class
 --------------------------
 
 .. sv:class:: pclass #(type T = int, int N = 4)
+
+.. sv:automodule:: cov_mod

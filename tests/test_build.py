@@ -435,3 +435,15 @@ def test_standalone_struct_and_enum_render_members(app: Sphinx, warning: StringI
     assert sigs["struct-beat_s"] == "struct beat_s {logic [7:0] data; logic valid;}"
     assert sigs["enum-power_e"] == "enum power_e {OFF, ON = 2}"
     assert warning.getvalue() == ""
+
+
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_autocovergroup_renders_coverpoints(app: Sphinx) -> None:
+    app.build()
+    html = (app.outdir / "index.html").read_text()
+    text = _text(html)
+    assert "covergroup-cov_mod-addr_cg" in _signatures(html)
+    assert '<p class="rubric">Coverpoints</p>' in html
+    assert "coverpoint cp_addr" in text
+    assert "Which address was hit." in text
+    assert "cross x_addr" in text

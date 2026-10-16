@@ -128,7 +128,13 @@ Coverage
 
 .. rst:directive:: .. sv:covergroup:: name
 
-   A ``covergroup``.
+   A ``covergroup``.  ``sv:autocovergroup`` and ``sv:automodule`` list its
+   coverpoints and crosses under a *Coverpoints* heading.  Each entry shows the
+   label (or the sampled expression) and any doc comment above it.
+
+   Bins, ``option`` assignments, and the ``sequence``, ``property``,
+   ``assert``, ``constraint``, and ``clocking`` constructs are out of scope.
+   The parser does not read them, and the domain has no object type for them.
 
 Members
 -------

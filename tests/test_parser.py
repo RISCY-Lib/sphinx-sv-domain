@@ -687,3 +687,28 @@ def test_parse_signature_standalone_struct_members() -> None:
     decl = parser.parse_signature("struct packed {logic [7:0] data; int n;} beat_s", "struct")
     assert (decl.kind, decl.name) == ("struct", "beat_s")
     assert [(m.type, m.name) for m in decl.members] == [("logic [7:0]", "data"), ("int", "n")]
+
+
+def test_covergroup_coverpoints_and_crosses() -> None:
+    src = textwrap.dedent(
+        """
+        module m;
+          covergroup cg @(posedge clk);
+            // Address coverage.
+            cp_a: coverpoint a { bins lo = {0}; }
+            coverpoint b;
+            x_ab: cross a, b;
+            cross a, c;
+            option.per_instance = 1;
+          endgroup
+        endmodule
+        """
+    )
+    decls = {(d.kind, d.name): d for d in parser.parse_source(src).declarations}
+    members = [(m.type, m.name, m.doc) for m in decls[("covergroup", "cg")].members]
+    assert members == [
+        ("coverpoint", "cp_a", "Address coverage."),
+        ("coverpoint", "b", ""),
+        ("cross", "x_ab", ""),
+        ("cross", "a, c", ""),
+    ]
