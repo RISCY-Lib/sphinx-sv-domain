@@ -95,6 +95,8 @@ Autodoc
 
 .. sv:autoclass:: txn_item
 
+.. sv:autoclass:: seq
+
 .. sv:autointerface:: axi_if
 
 Manual modport
@@ -114,3 +116,8 @@ Index
 -----
 
 * :ref:`genindex`
+
+Manual parameterized class
+--------------------------
+
+.. sv:class:: pclass #(type T = int, int N = 4)
