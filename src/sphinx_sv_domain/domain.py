@@ -207,8 +207,17 @@ class SVDomain(Domain):
         node: pending_xref,
         contnode: Element,
     ) -> reference | None:
-        match = self._lookup(target, node.get("sv:namespace"))
+        match, candidates = self._resolve(target, node.get("sv:namespace"))
         if match is None:
+            if len(candidates) > 1 and (env.config.sv_warn_unresolved_xrefs or env.config.nitpicky):
+                logger.warning(
+                    _("ambiguous SystemVerilog reference '%s', candidates: %s"),
+                    target,
+                    ", ".join(sorted(name for name, _entry in candidates)),
+                    location=node,
+                    type="ref",
+                    subtype="sv",
+                )
             return None
         fullname, entry = match
         return make_refnode(builder, fromdocname, entry.docname, entry.node_id, contnode, fullname)
@@ -246,8 +255,14 @@ class SVDomain(Domain):
 
     def _lookup(self, target: str, namespace: str | None) -> tuple[str, ObjectEntry] | None:
         """Resolve *target* to a registered object using SV scoping rules."""
+        return self._resolve(target, namespace)[0]
+
+    def _resolve(
+        self, target: str, namespace: str | None
+    ) -> tuple[tuple[str, ObjectEntry] | None, list[tuple[str, ObjectEntry]]]:
+        """Resolve *target*, also returning the suffix candidates when ambiguous."""
         if target in self.objects:
-            return target, self.objects[target]
+            return (target, self.objects[target]), []
 
         if namespace:
             # Try progressively shorter enclosing namespaces.
@@ -255,7 +270,7 @@ class SVDomain(Domain):
             for i in range(len(parts), 0, -1):
                 qualified = "::".join((*parts[:i], target))
                 if qualified in self.objects:
-                    return qualified, self.objects[qualified]
+                    return (qualified, self.objects[qualified]), []
 
         # Fall back to a unique suffix match on the final name component.
         candidates = [
@@ -264,8 +279,8 @@ class SVDomain(Domain):
             if _last_component(name) == _last_component(target)
         ]
         if len(candidates) == 1:
-            return candidates[0]
-        return None
+            return candidates[0], []
+        return None, candidates
 
 
 def _last_component(name: str) -> str:

@@ -391,3 +391,38 @@ def test_manual_class_signature_renders_parameters(app: Sphinx) -> None:
     app.build()
     sigs = _signatures((app.outdir / "index.html").read_text())
     assert sigs["class-pclass"].startswith("class pclass #(type T = int, int N = 4)")
+
+
+@pytest.mark.sphinx("html", testroot="sv-strict", freshenv=True)
+def test_xref_warnings_silent_by_default(app: Sphinx, warning: StringIO) -> None:
+    app.build()
+    out = warning.getvalue()
+    assert "no_such_module" not in out
+    assert "ambiguous" not in out
+    assert "missing_t" not in out
+
+
+@pytest.mark.sphinx(
+    "html",
+    testroot="sv-strict",
+    freshenv=True,
+    confoverrides={"sv_warn_unresolved_xrefs": True},
+)
+def test_strict_xrefs_warn_on_unresolved_and_ambiguous(app: Sphinx, warning: StringIO) -> None:
+    app.build()
+    out = warning.getvalue()
+    assert "no_such_module" in out
+    assert "missing_t" in out
+    assert "ambiguous SystemVerilog reference 'word_t'" in out
+    assert "pkg_a::word_t, pkg_b::word_t" in out
+
+
+@pytest.mark.sphinx(
+    "html",
+    testroot="sv-strict",
+    freshenv=True,
+    confoverrides={"nitpicky": True},
+)
+def test_nitpicky_warns_on_ambiguous_match(app: Sphinx, warning: StringIO) -> None:
+    app.build()
+    assert "pkg_a::word_t, pkg_b::word_t" in warning.getvalue()

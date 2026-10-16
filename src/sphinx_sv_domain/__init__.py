@@ -69,6 +69,11 @@ def setup(app: Sphinx) -> ExtensionMetadata:
     # file are reported as Sphinx warnings located at ``file:line``.  Off by
     # default because a file that documents cleanly may still carry diagnostics.
     app.add_config_value("sv_autodoc_warn_on_parse_errors", False, "env", types=(bool,))
+    # When true, unresolved references (including signature type links) and
+    # ambiguous suffix matches are reported as Sphinx warnings.  Off by default
+    # so partially-documented designs build quietly; ``nitpicky`` also enables
+    # the ambiguity warning.
+    app.add_config_value("sv_warn_unresolved_xrefs", False, "env", types=(bool,))
     app.add_domain(SVDomain)
 
     # Ship a small stylesheet so grouped ports/parameters read as nested blocks

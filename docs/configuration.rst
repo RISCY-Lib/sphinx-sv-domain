@@ -97,6 +97,15 @@ information to the pyslang preprocessor.
    reported one time per build. Use this option with the preprocessor options
    above to find which include directory or define is missing.
 
+``sv_warn_unresolved_xrefs``
+   :Type: ``bool``
+   :Default: ``False``
+
+   Report a reference that does not resolve as a Sphinx warning. This includes
+   the type links in signatures, which are quiet by default. Also report an
+   ambiguous reference, and list the fully qualified names of the candidates.
+   The Sphinx option ``nitpicky`` also enables the ambiguity warning.
+
 .. code-block:: python
 
    sv_autodoc_include_dirs = ["../rtl/include", "../uvm/src"]
