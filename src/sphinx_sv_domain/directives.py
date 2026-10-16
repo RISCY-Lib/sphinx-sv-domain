@@ -465,6 +465,8 @@ class SVObject(ObjectDescription[str]):
             reftarget=target,
         )
         ref["sv:namespace"] = namespace
+        if self.env.config.sv_warn_unresolved_xrefs:
+            ref["refwarn"] = True
         ref += nodes.Text(title)
         return ref
 

@@ -46,6 +46,8 @@ class SVXRefRole(XRefRole):
         target: str,
     ) -> tuple[str, str]:
         refnode["sv:namespace"] = env.ref_context.get("sv:namespace")
+        if env.config.sv_warn_unresolved_xrefs:
+            refnode["refwarn"] = True
         # A leading '~' displays only the final scope component of the name.
         if not has_explicit_title and target.startswith("~"):
             target = target[1:]
