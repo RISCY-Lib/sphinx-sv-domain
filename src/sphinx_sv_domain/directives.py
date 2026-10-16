@@ -237,6 +237,7 @@ class SVObject(ObjectDescription[str]):
             if objtype == "function":
                 self._render_return(signode, decl, namespace, sig_xrefs)
         elif objtype == "class":
+            self._render_params(signode, decl, namespace, sig_xrefs)
             self._render_extends(signode, decl, namespace, sig_xrefs)
         elif objtype in ("port", "parameter", "enumerator"):
             self._render_typed_leaf(signode, decl, namespace, sig_xrefs)

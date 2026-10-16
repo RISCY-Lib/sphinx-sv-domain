@@ -372,3 +372,22 @@ def test_autodoc_warns_on_parse_errors(app: Sphinx, warning: StringIO) -> None:
 def test_autodoc_parse_errors_silent_by_default(app: Sphinx, warning: StringIO) -> None:
     app.build()
     assert "parse diagnostic" not in warning.getvalue()
+
+
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_class_parameters_and_method_qualifiers_render(app: Sphinx) -> None:
+    app.build()
+    sigs = _signatures((app.outdir / "index.html").read_text())
+    assert sigs["class-seq"] == "class seq extends base"
+    # Class parameters render as sub-objects, like module parameters.
+    assert sigs["parameter-seq-REQ"] == "parameter REQ: type = int"
+    assert sigs["parameter-seq-N"] == "parameter N: int = 4"
+    assert sigs["task-seq-run"].startswith("protected virtual task run")
+    assert sigs["function-seq-count"].startswith("static function count")
+
+
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_manual_class_signature_renders_parameters(app: Sphinx) -> None:
+    app.build()
+    sigs = _signatures((app.outdir / "index.html").read_text())
+    assert sigs["class-pclass"].startswith("class pclass #(type T = int, int N = 4)")

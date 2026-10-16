@@ -433,7 +433,9 @@ def _walk(node: object, parent: str | None, ctx: _Ctx, out: list[SVDecl]) -> Non
             out.append(mp)
         return
     # ClassMethodDeclaration wraps a FunctionDeclaration/TaskDeclaration; unwrap it.
+    method_qualifiers: list[str] = []
     if kind == SyntaxKind.ClassMethodDeclaration:
+        method_qualifiers = _qualifier_texts(node)
         node = getattr(node, "declaration", node)
         kind = getattr(node, "kind", None)
     elif kind == SyntaxKind.ClassMethodPrototype:
@@ -441,11 +443,7 @@ def _walk(node: object, parent: str | None, ctx: _Ctx, out: list[SVDecl]) -> Non
         # FunctionPrototype, determine function vs task from its keyword, and
         # emit a declaration with the outer qualifier list and the leading doc
         # comment (which lives on the outer node's first token).
-        qualifiers = [
-            _token_text(q)
-            for q in (getattr(node, "qualifiers", []) or [])
-            if _token_text(q)
-        ]
+        qualifiers = _qualifier_texts(node)
         proto_node = getattr(node, "prototype", node)
         kw = _token_text(getattr(proto_node, "keyword", None))
         proto_objtype = "task" if kw == "task" else "function"
@@ -459,12 +457,20 @@ def _walk(node: object, parent: str | None, ctx: _Ctx, out: list[SVDecl]) -> Non
         return
 
     decl = _build_decl(node, objtype, parent, ctx)
+    decl.qualifiers = method_qualifiers
     out.append(decl)
 
     member_attr = _MEMBER_ATTR.get(objtype)
     if member_attr:
         for child in _iter_nodes(getattr(node, member_attr, []) or []):
             _walk(child, decl.name, ctx, out)
+
+
+def _qualifier_texts(node: object) -> list[str]:
+    """Return the clean text of each qualifier keyword on a class member."""
+    return [
+        _token_text(q) for q in (getattr(node, "qualifiers", []) or []) if _token_text(q)
+    ]
 
 
 def _build_decl(node: object, objtype: str, parent: str | None, ctx: _Ctx) -> SVDecl:
@@ -499,40 +505,50 @@ def _build_decl(node: object, objtype: str, parent: str | None, ctx: _Ctx) -> SV
 # ---------------------------------------------------------------------------
 # Per-construct extraction
 # ---------------------------------------------------------------------------
+def _fill_params(parameters: object, decl: SVDecl, ctx: _Ctx) -> None:
+    """Capture a ``#(...)`` parameter port list onto *decl*."""
+    if parameters is None:
+        return
+    current: SVGroup | None = None
+    registered = False
+    for pdecl in _iter_nodes(getattr(parameters, "declarations", [])):
+        marker = _leading_group(pdecl, ctx.group_banners)
+        # A marker repeating the current group's title just continues it (a
+        # duplicate consecutive banner), so it never spawns an empty group.
+        if marker is not None and (current is None or marker.title != current.title):
+            current, registered = marker, False
+        is_type_param = getattr(pdecl, "kind", None) == SyntaxKind.TypeParameterDeclaration
+        ptype = "type" if is_type_param else _str(getattr(pdecl, "type", None))
+        for declarator in _iter_nodes(getattr(pdecl, "declarators", [])):
+            if current is not None and not registered:
+                decl.param_groups.append(current)
+                registered = True
+            default = None
+            init = getattr(declarator, "initializer", None)
+            if init is not None:
+                default = _str(getattr(init, "expr", None)) or None
+            elif is_type_param:
+                # ``type T = int`` stores its default in a TypeAssignment.
+                assign = getattr(declarator, "assignment", None)
+                default = _str(getattr(assign, "type", None)) or None
+            decl.params.append(
+                SVParam(
+                    name=_token_text(getattr(declarator, "name", None)),
+                    type=ptype,
+                    default=default,
+                    doc=_trailing_doc(declarator, ctx),
+                    group=current.title if current else None,
+                )
+            )
+
+
 def _fill_header(node: object, decl: SVDecl, ctx: _Ctx) -> None:
     header = getattr(node, "header", None)
     if header is None:
         return
     decl.name = _token_text(getattr(header, "name", None))
 
-    parameters = getattr(header, "parameters", None)
-    if parameters is not None:
-        current: SVGroup | None = None
-        registered = False
-        for pdecl in _iter_nodes(getattr(parameters, "declarations", [])):
-            marker = _leading_group(pdecl, ctx.group_banners)
-            # A marker repeating the current group's title just continues it (a
-            # duplicate consecutive banner), so it never spawns an empty group.
-            if marker is not None and (current is None or marker.title != current.title):
-                current, registered = marker, False
-            ptype = _str(getattr(pdecl, "type", None))
-            for declarator in _iter_nodes(getattr(pdecl, "declarators", [])):
-                if current is not None and not registered:
-                    decl.param_groups.append(current)
-                    registered = True
-                default = None
-                init = getattr(declarator, "initializer", None)
-                if init is not None:
-                    default = _str(getattr(init, "expr", None)) or None
-                decl.params.append(
-                    SVParam(
-                        name=_token_text(getattr(declarator, "name", None)),
-                        type=ptype,
-                        default=default,
-                        doc=_trailing_doc(declarator, ctx),
-                        group=current.title if current else None,
-                    )
-                )
+    _fill_params(getattr(header, "parameters", None), decl, ctx)
 
     ports = getattr(header, "ports", None)
     if ports is not None:
@@ -568,6 +584,7 @@ def _fill_header(node: object, decl: SVDecl, ctx: _Ctx) -> None:
 
 def _fill_class(node: object, decl: SVDecl, ctx: _Ctx) -> None:
     decl.name = _token_text(getattr(node, "name", None))
+    _fill_params(getattr(node, "parameters", None), decl, ctx)
     extends = getattr(node, "extendsClause", None)
     if extends is not None:
         base = _str(extends)

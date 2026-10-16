@@ -616,3 +616,37 @@ def test_unknown_standard_rejected() -> None:
 def test_standard_accepted() -> None:
     result = parser.parse_source("module m; endmodule", std="1800-2023")
     assert "m" in _names(result)
+
+
+def test_class_parameters_are_captured() -> None:
+    src = "class seq #(type REQ = int, type T, int N = 4) extends base; endclass"
+    (decl,) = [d for d in parser.parse_source(src).declarations if d.kind == "class"]
+    assert [(p.name, p.type, p.default) for p in decl.params] == [
+        ("REQ", "type", "int"),
+        ("T", "type", None),
+        ("N", "int", "4"),
+    ]
+    assert decl.base == "base"
+
+
+def test_class_method_qualifiers_are_captured() -> None:
+    src = textwrap.dedent(
+        """
+        class C;
+          local task run(); endtask
+          protected virtual function int f(); endfunction
+          static function void g(); endfunction
+          function void h(); endfunction
+        endclass
+        """
+    )
+    decls = {d.name: d for d in parser.parse_source(src).declarations}
+    assert decls["run"].qualifiers == ["local"]
+    assert decls["f"].qualifiers == ["protected", "virtual"]
+    assert decls["g"].qualifiers == ["static"]
+    assert decls["h"].qualifiers == []
+
+
+def test_class_signature_parses_parameters() -> None:
+    decl = parser.parse_signature("seq #(type REQ = int, int N = 4) extends base", "class")
+    assert [p.name for p in decl.params] == ["REQ", "N"]
