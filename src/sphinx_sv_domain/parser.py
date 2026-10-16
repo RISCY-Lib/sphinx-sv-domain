@@ -500,7 +500,7 @@ def _build_decl(node: object, objtype: str, parent: str | None, ctx: _Ctx) -> SV
     elif objtype == "typedef":
         _fill_typedef(node, decl)
     elif objtype == "covergroup":
-        decl.name = _token_text(getattr(node, "name", None))
+        _fill_covergroup(node, decl)
 
     if not decl.name:
         decl.name = "<anonymous>"
@@ -648,6 +648,34 @@ def _fill_interface_members(node: object, decl: SVDecl, ctx: _Ctx) -> None:
                     doc=lead or _trailing_doc(mdecl, ctx),
                 )
             )
+
+
+def _fill_covergroup(node: object, decl: SVDecl) -> None:
+    """Capture a covergroup's name, coverpoints and crosses.
+
+    Each coverpoint or cross becomes an SVMember whose ``type`` is the keyword
+    (``coverpoint`` / ``cross``).  The name is the label when present, else the
+    sampled expression (coverpoint) or the comma-joined cross items.  Bins and
+    ``option`` assignments are not captured.
+    """
+    decl.name = _token_text(getattr(node, "name", None))
+    for item in _iter_nodes(getattr(node, "members", []) or []):
+        kind = getattr(item, "kind", None)
+        if kind == SyntaxKind.Coverpoint:
+            mtype, fallback = "coverpoint", _str(getattr(item, "expr", None))
+        elif kind == SyntaxKind.CoverCross:
+            items = getattr(item, "items", [])
+            mtype, fallback = "cross", ", ".join(_str(i) for i in _iter_nodes(items))
+        else:
+            continue
+        label = getattr(item, "label", None)
+        label_name = getattr(label, "name", None)
+        name = _token_text(label_name)
+        # The leading trivia sits on the label, or on the keyword when unlabelled.
+        first = label_name if label is not None else getattr(item, "keyword", None)
+        decl.members.append(
+            SVMember(name=name or fallback, type=mtype, doc=_leading_doc(item, first))
+        )
 
 
 def _fill_modport(item: object, decl: SVDecl) -> None:
@@ -1031,7 +1059,7 @@ def _clean_type(node: object) -> str:
     return _LEADING_TRIVIA_RE.sub("", str(node)).strip()
 
 
-def _leading_doc(node: object) -> str:
+def _leading_doc(node: object, token: object | None = None) -> str:
     """Return the doc-comment block on the lines immediately preceding *node*.
 
     Like :func:`_extract_doc` but hardened for members packed one per line: a
@@ -1039,11 +1067,15 @@ def _leading_doc(node: object) -> str:
     leading trivia before any newline, so it is skipped rather than misread as
     this member's documentation.  Only the contiguous comment run adjacent to
     the node (after the last blank line) is kept.
+
+    Pass *token* when the node's first token is empty (an omitted implicit
+    type, as on a coverpoint) so the trivia is read from the first real token.
     """
-    try:
-        token = node.getFirstToken()  # type: ignore[attr-defined]
-    except Exception:
-        return ""
+    if token is None:
+        try:
+            token = node.getFirstToken()  # type: ignore[attr-defined]
+        except Exception:
+            return ""
     lines: list[str] = []
     newline_run = 0
     for triv in list(getattr(token, "trivia", []) or []):

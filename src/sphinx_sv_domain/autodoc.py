@@ -255,6 +255,8 @@ class SVAutoObject(SphinxDirective):
                 lines += [f"{pad}.. rubric:: Properties", ""]
             elif decl.kind == "interface":
                 lines += [f"{pad}.. rubric:: Signals", ""]
+            elif decl.kind == "covergroup":
+                lines += [f"{pad}.. rubric:: Coverpoints", ""]
             for member in decl.members:
                 signature = f"{member.type} {member.name}".strip()
                 lines.append(f"{pad}* ``{signature}``")
