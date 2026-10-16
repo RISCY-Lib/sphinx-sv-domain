@@ -650,3 +650,28 @@ def test_class_method_qualifiers_are_captured() -> None:
 def test_class_signature_parses_parameters() -> None:
     decl = parser.parse_signature("seq #(type REQ = int, int N = 4) extends base", "class")
     assert [p.name for p in decl.params] == ["REQ", "N"]
+
+
+def test_body_parameters_and_localparams_are_captured() -> None:
+    src = textwrap.dedent(
+        """
+        module m #(parameter int W = 8) (input logic clk);
+          localparam int DEPTH = 1 << W;
+          parameter  int EXTRA = 3, OTHER = 4;
+        endmodule
+        """
+    )
+    (decl,) = parser.parse_source(src).declarations
+    assert [(p.name, p.type, p.default, p.is_local) for p in decl.params] == [
+        ("W", "int", "8", False),
+        ("DEPTH", "int", "1 << W", True),
+        ("EXTRA", "int", "3", False),
+        ("OTHER", "int", "4", False),
+    ]
+
+
+def test_autodoc_emits_localparam_flag() -> None:
+    from sphinx_sv_domain.autodoc import _member_lines
+
+    lines = _member_lines("", "parameter", "int D = 1", "", local=True)
+    assert lines[:2] == [".. sv:parameter:: int D = 1", "   :localparam:"]
