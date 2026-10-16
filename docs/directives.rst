@@ -116,7 +116,12 @@ Types
                    .. sv:enumerator:: name
 
    A standalone ``struct``/``enum``, or a single enumerator.  ``sv:enumerator``
-   accepts an optional ``= value``.
+   accepts an optional ``= value``.  A ``struct`` or ``enum`` signature that
+   includes a ``{...}`` body renders its members, as ``sv:typedef`` does.
+
+   .. code-block:: rst
+
+      .. sv:enum:: enum {OFF, ON = 2} power_e
 
 Coverage
 --------

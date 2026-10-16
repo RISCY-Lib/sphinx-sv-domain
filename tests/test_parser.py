@@ -675,3 +675,15 @@ def test_autodoc_emits_localparam_flag() -> None:
 
     lines = _member_lines("", "parameter", "int D = 1", "", local=True)
     assert lines[:2] == [".. sv:parameter:: int D = 1", "   :localparam:"]
+
+
+def test_parse_signature_standalone_enum_members() -> None:
+    decl = parser.parse_signature("enum {OFF, ON = 2} power_e", "enum")
+    assert (decl.kind, decl.name) == ("enum", "power_e")
+    assert [(e.name, e.value) for e in decl.enumerators] == [("OFF", None), ("ON", "2")]
+
+
+def test_parse_signature_standalone_struct_members() -> None:
+    decl = parser.parse_signature("struct packed {logic [7:0] data; int n;} beat_s", "struct")
+    assert (decl.kind, decl.name) == ("struct", "beat_s")
+    assert [(m.type, m.name) for m in decl.members] == [("logic [7:0]", "data"), ("int", "n")]

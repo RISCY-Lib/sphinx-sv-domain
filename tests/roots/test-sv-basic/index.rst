@@ -22,6 +22,17 @@ Manual directives
 
       A colour.
 
+Standalone types
+----------------
+
+.. sv:struct:: struct packed {logic [7:0] data; logic valid;} beat_s
+
+   A standalone struct.
+
+.. sv:enum:: enum {OFF, ON = 2} power_e
+
+   A standalone enum.
+
 Manual grouping
 ---------------
 
