@@ -246,6 +246,22 @@ class SVObject(ObjectDescription[str]):
         elif objtype == "typedef":
             if decl.underlying:
                 self._append_typed_annotation(signode, ": ", decl.underlying, namespace, sig_xrefs)
+        elif objtype in ("struct", "enum"):
+            self._render_type_members(signode, decl)
+
+    def _render_type_members(self, signode: desc_signature, decl: SVDecl) -> None:
+        """Append the members of a standalone ``struct`` / ``enum`` to *signode*."""
+        if decl.enumerators:
+            items = [
+                e.name if e.value is None else f"{e.name} = {e.value}" for e in decl.enumerators
+            ]
+            text = "{" + ", ".join(items) + "}"
+        elif decl.members:
+            text = "{" + " ".join(f"{m.type} {m.name};".strip() for m in decl.members) + "}"
+        else:
+            return
+        signode += addnodes.desc_sig_space()
+        self._append_annotation(signode, text)
 
     def _render_params(
         self,

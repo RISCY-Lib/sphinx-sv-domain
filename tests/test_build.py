@@ -426,3 +426,12 @@ def test_strict_xrefs_warn_on_unresolved_and_ambiguous(app: Sphinx, warning: Str
 def test_nitpicky_warns_on_ambiguous_match(app: Sphinx, warning: StringIO) -> None:
     app.build()
     assert "pkg_a::word_t, pkg_b::word_t" in warning.getvalue()
+
+
+@pytest.mark.sphinx("html", testroot="sv-basic", freshenv=True)
+def test_standalone_struct_and_enum_render_members(app: Sphinx, warning: StringIO) -> None:
+    app.build()
+    sigs = _signatures((app.outdir / "index.html").read_text(encoding="utf-8"))
+    assert sigs["struct-beat_s"] == "struct beat_s {logic [7:0] data; logic valid;}"
+    assert sigs["enum-power_e"] == "enum power_e {OFF, ON = 2}"
+    assert warning.getvalue() == ""

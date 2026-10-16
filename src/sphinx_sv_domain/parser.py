@@ -363,6 +363,11 @@ def parse_signature(sig: str, objtype: str) -> SVDecl:
             return member
         return _fallback_decl(sig, objtype)
 
+    if objtype in ("struct", "enum") and "{" in sig:
+        decl = _parse_standalone_type(sig, objtype)
+        if decl is not None:
+            return decl
+
     wrapped = _wrap_signature(sig, objtype)
     if wrapped is not None:
         try:
@@ -722,6 +727,24 @@ def _wrap_signature(sig: str, objtype: str) -> str | None:
             return body
         text = body.rstrip(";") + ";"
         return f"{text} {end}" if end else text
+    return None
+
+
+def _parse_standalone_type(sig: str, objtype: str) -> SVDecl | None:
+    """Parse a standalone ``struct`` / ``enum`` signature that has a member body.
+
+    The fragment is parsed as a ``typedef`` so the typedef member extraction is
+    reused, then the result is relabelled with the requested *objtype*.
+    """
+    body = sig if re.match(r"^\s*(?:struct|union|enum)\b", sig) else f"{objtype} {sig}"
+    try:
+        result = parse_source(f"typedef {body.rstrip(';')};")
+    except Exception:
+        return None
+    for decl in result.declarations:
+        if decl.kind == "typedef" and decl.name and decl.underlying:
+            decl.kind = objtype
+            return decl
     return None
 
 
