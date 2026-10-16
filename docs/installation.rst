@@ -6,7 +6,7 @@ Requirements
 
 - Python 3.10 or newer
 - Sphinx 7.4 or newer
-- `pyslang <https://github.com/MikePopoloski/slang>`_ 11.x (installed
+- `pyslang <https://github.com/MikePopoloski/slang>`_ 11 or 12 (installed
   automatically as a dependency)
 
 .. note::

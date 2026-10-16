@@ -35,11 +35,12 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Documentation :: Sphinx",
 ]
 dependencies = [
     "sphinx>=7.4",
-    "pyslang>=11,<12",
+    "pyslang>=11,<13",
 ]
 
 [project.urls]
@@ -200,7 +201,7 @@ use_frozen_constraints = false
 uv_resolution = "lowest-direct"
 
 # Canary env: resolve the newest versions allowed by our dependency ranges
-# (sphinx>=7.4, pyslang>=11,<12) instead of the pinned uv.lock, so a breaking
+# (sphinx>=7.4, pyslang>=11,<13) instead of the pinned uv.lock, so a breaking
 # upstream release surfaces here rather than in a user's install.
 [tool.tox.env.py313-latest]
 description = "run the test suite against the newest allowed dependency versions (ignores uv.lock)"
