@@ -324,12 +324,20 @@ def _group_by_parent(decls: list[SVDecl]) -> dict[str, list[SVDecl]]:
 
 
 def _member_lines(
-    pad: str, kind: str, signature: str, doc: str, *, no_index: bool = False
+    pad: str,
+    kind: str,
+    signature: str,
+    doc: str,
+    *,
+    no_index: bool = False,
+    local: bool = False,
 ) -> list[str]:
     """Emit an ``sv:<kind>`` directive for a member, with its doc as content."""
     lines = [f"{pad}.. sv:{kind}:: {signature}"]
     if no_index:
         lines.append(f"{pad}{_INDENT}:no-index:")
+    if local:
+        lines.append(f"{pad}{_INDENT}:localparam:")
     lines.append("")
     if doc:
         body = pad + _INDENT
@@ -359,7 +367,12 @@ def _group_section_lines(
     def _emit(at: str, member: object) -> None:
         lines.extend(
             _member_lines(
-                at, kind, signature(member), getattr(member, "doc", ""), no_index=no_index
+                at,
+                kind,
+                signature(member),
+                getattr(member, "doc", ""),
+                no_index=no_index,
+                local=getattr(member, "is_local", False),
             )
         )
 
@@ -390,9 +403,7 @@ def _signature_for(decl: SVDecl) -> str:
         prefix = f"{decl.return_type} " if decl.kind == "function" and decl.return_type else ""
         return f"{prefix}{decl.name}({args})"
     if decl.kind == "modport" and decl.ports:
-        ports_str = ", ".join(
-            f"{p.direction} {p.name}".strip() for p in decl.ports
-        )
+        ports_str = ", ".join(f"{p.direction} {p.name}".strip() for p in decl.ports)
         return f"{decl.name} ({ports_str})"
     return decl.name
 

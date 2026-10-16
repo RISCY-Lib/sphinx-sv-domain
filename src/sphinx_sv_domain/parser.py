@@ -138,6 +138,8 @@ class SVParam:
     doc: str = ""
     #: Title of the group this parameter belongs to, or ``None`` when ungrouped.
     group: str | None = None
+    #: ``True`` for a ``localparam``, ``False`` for a ``parameter``.
+    is_local: bool = False
 
 
 @dataclass
@@ -468,9 +470,7 @@ def _walk(node: object, parent: str | None, ctx: _Ctx, out: list[SVDecl]) -> Non
 
 def _qualifier_texts(node: object) -> list[str]:
     """Return the clean text of each qualifier keyword on a class member."""
-    return [
-        _token_text(q) for q in (getattr(node, "qualifiers", []) or []) if _token_text(q)
-    ]
+    return [_token_text(q) for q in (getattr(node, "qualifiers", []) or []) if _token_text(q)]
 
 
 def _build_decl(node: object, objtype: str, parent: str | None, ctx: _Ctx) -> SVDecl:
@@ -509,9 +509,14 @@ def _fill_params(parameters: object, decl: SVDecl, ctx: _Ctx) -> None:
     """Capture a ``#(...)`` parameter port list onto *decl*."""
     if parameters is None:
         return
+    _add_params(_iter_nodes(getattr(parameters, "declarations", [])), decl, ctx)
+
+
+def _add_params(declarations: Iterable[object], decl: SVDecl, ctx: _Ctx) -> None:
+    """Append each parameter declarator in *declarations* to ``decl.params``."""
     current: SVGroup | None = None
     registered = False
-    for pdecl in _iter_nodes(getattr(parameters, "declarations", [])):
+    for pdecl in declarations:
         marker = _leading_group(pdecl, ctx.group_banners)
         # A marker repeating the current group's title just continues it (a
         # duplicate consecutive banner), so it never spawns an empty group.
@@ -538,8 +543,19 @@ def _fill_params(parameters: object, decl: SVDecl, ctx: _Ctx) -> None:
                     default=default,
                     doc=_trailing_doc(declarator, ctx),
                     group=current.title if current else None,
+                    is_local=_token_text(getattr(pdecl, "keyword", None)) == "localparam",
                 )
             )
+
+
+def _fill_body_params(node: object, decl: SVDecl, ctx: _Ctx) -> None:
+    """Capture ``parameter`` / ``localparam`` declarations in a body onto *decl*."""
+    declarations = [
+        getattr(child, "parameter", None)
+        for child in _iter_nodes(getattr(node, "members", []) or [])
+        if getattr(child, "kind", None) == SyntaxKind.ParameterDeclarationStatement
+    ]
+    _add_params([d for d in declarations if d is not None], decl, ctx)
 
 
 def _fill_header(node: object, decl: SVDecl, ctx: _Ctx) -> None:
@@ -549,6 +565,7 @@ def _fill_header(node: object, decl: SVDecl, ctx: _Ctx) -> None:
     decl.name = _token_text(getattr(header, "name", None))
 
     _fill_params(getattr(header, "parameters", None), decl, ctx)
+    _fill_body_params(node, decl, ctx)
 
     ports = getattr(header, "ports", None)
     if ports is not None:
